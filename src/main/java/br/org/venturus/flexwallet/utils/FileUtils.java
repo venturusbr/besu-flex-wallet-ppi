@@ -7,7 +7,7 @@ import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.util.Base64;
 
-import br.org.venturus.flexwallet.crypto.key.types.CompositeKeyPair;
+import br.org.venturus.flexwallet.crypto.key.types.NodeKeyPair;
 import br.org.venturus.flexwallet.crypto.key.types.CompositePrivateKey;
 import br.org.venturus.flexwallet.crypto.key.types.CompositePublicKey;
 
@@ -47,7 +47,7 @@ public class FileUtils {
   /**
    * Writes the keys to the file. Supports both single and composite key pairs.
    */
-  public void writeKeys(CompositeKeyPair keyPair) throws IOException {
+  public void writeKeys(NodeKeyPair keyPair) throws IOException {
     createDirectory();
 
     StringBuilder stringBuilder = new StringBuilder();

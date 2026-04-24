@@ -13,7 +13,7 @@ import org.web3j.utils.Convert;
 import br.org.venturus.flexwallet.crypto.DigitalSignatureAlgorithm;
 import br.org.venturus.flexwallet.crypto.NestedHybridDSA;
 import br.org.venturus.flexwallet.crypto.Secp256k1;
-import br.org.venturus.flexwallet.crypto.key.types.CompositeKeyPair;
+import br.org.venturus.flexwallet.crypto.key.types.NodeKeyPair;
 import br.org.venturus.flexwallet.crypto.MLDSA;
 import br.org.venturus.flexwallet.model.Transaction;
 import br.org.venturus.flexwallet.model.encoder.EIP1559Encoder;
@@ -45,7 +45,7 @@ public class App {
 
       // Generates the key only if the flag is present or the file does not exist
       if (shouldGenerateKeys || !Files.exists(keyFile)) {
-        CompositeKeyPair keyPair = signatureAlgorithm.generateKeyPair();
+        NodeKeyPair keyPair = signatureAlgorithm.generateKeyPair();
         fileUtils.writeKeys(keyPair);
         System.out.println("Generated new keys. File Path: " + keyFile);
       }

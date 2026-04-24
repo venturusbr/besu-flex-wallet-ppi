@@ -1,6 +1,6 @@
 package br.org.venturus.flexwallet.utils;
 
-import br.org.venturus.flexwallet.crypto.key.types.CompositeKeyPair;
+import br.org.venturus.flexwallet.crypto.key.types.NodeKeyPair;
 import br.org.venturus.flexwallet.crypto.key.types.CompositePrivateKey;
 import br.org.venturus.flexwallet.crypto.key.types.CompositePublicKey;
 import org.junit.jupiter.api.*;
@@ -81,7 +81,7 @@ class FileUtilsTest {
   void testWriteAndReadSingleKeyPair() throws IOException {
     PublicKey pub = new DummyPublicKey("A");
     PrivateKey priv = new DummyPrivateKey("A");
-    CompositeKeyPair kp = new CompositeKeyPair(priv, pub);
+    NodeKeyPair kp = new NodeKeyPair(priv, pub);
 
     FileUtils fileUtils = new FileUtils(tempDir.toString(), tempFile.getFileName().toString());
     fileUtils.writeKeys(kp);
@@ -103,7 +103,7 @@ class FileUtilsTest {
 
     CompositePublicKey cpub = new CompositePublicKey(pub1, pub2);
     CompositePrivateKey cpriv = new CompositePrivateKey(priv1, priv2);
-    CompositeKeyPair kp = new CompositeKeyPair(cpriv, cpub);
+    NodeKeyPair kp = new NodeKeyPair(cpriv, cpub);
 
     FileUtils fileUtils = new FileUtils(tempDir.toString(), tempFile.getFileName().toString());
     fileUtils.writeKeys(kp);

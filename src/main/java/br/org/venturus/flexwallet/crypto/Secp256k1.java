@@ -4,7 +4,7 @@ import java.security.*;
 import java.security.spec.ECGenParameterSpec;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
-import br.org.venturus.flexwallet.crypto.key.types.CompositeKeyPair;
+import br.org.venturus.flexwallet.crypto.key.types.NodeKeyPair;
 
 public class Secp256k1 implements DigitalSignatureAlgorithm {
   static {
@@ -12,12 +12,12 @@ public class Secp256k1 implements DigitalSignatureAlgorithm {
   }
 
   @Override
-  public CompositeKeyPair generateKeyPair() {
+  public NodeKeyPair generateKeyPair() {
     try {
       KeyPairGenerator kpg = KeyPairGenerator.getInstance("EC", "BC");
       kpg.initialize(new ECGenParameterSpec("secp256k1"));
       KeyPair kp = kpg.generateKeyPair();
-      return CompositeKeyPair.of(kp.getPrivate(), kp.getPublic());
+      return NodeKeyPair.of(kp.getPrivate(), kp.getPublic());
     } catch (Exception e) {
       throw new RuntimeException(e);
     }

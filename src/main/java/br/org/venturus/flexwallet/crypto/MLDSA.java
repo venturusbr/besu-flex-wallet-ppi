@@ -4,7 +4,7 @@ import java.security.*;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.pqc.jcajce.spec.DilithiumParameterSpec;
 
-import br.org.venturus.flexwallet.crypto.key.types.CompositeKeyPair;
+import br.org.venturus.flexwallet.crypto.key.types.NodeKeyPair;
 
 public class MLDSA implements DigitalSignatureAlgorithm {
   static {
@@ -12,12 +12,12 @@ public class MLDSA implements DigitalSignatureAlgorithm {
   }
 
   @Override
-  public CompositeKeyPair generateKeyPair() {
+  public NodeKeyPair generateKeyPair() {
     try {
       KeyPairGenerator kpg = KeyPairGenerator.getInstance("Dilithium", "BCPQC");
       kpg.initialize(DilithiumParameterSpec.dilithium3);
       KeyPair kp = kpg.generateKeyPair();
-      return CompositeKeyPair.of(kp.getPrivate(), kp.getPublic());
+      return NodeKeyPair.of(kp.getPrivate(), kp.getPublic());
     } catch (Exception e) {
       throw new RuntimeException(e);
     }

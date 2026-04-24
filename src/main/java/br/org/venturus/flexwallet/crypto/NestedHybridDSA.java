@@ -5,7 +5,7 @@ import java.security.PublicKey;
 
 import org.apache.tuweni.bytes.Bytes;
 
-import br.org.venturus.flexwallet.crypto.key.types.CompositeKeyPair;
+import br.org.venturus.flexwallet.crypto.key.types.NodeKeyPair;
 import br.org.venturus.flexwallet.crypto.key.types.CompositePrivateKey;
 
 public class NestedHybridDSA implements DigitalSignatureAlgorithm {
@@ -18,10 +18,10 @@ public class NestedHybridDSA implements DigitalSignatureAlgorithm {
   }
 
   @Override
-  public CompositeKeyPair generateKeyPair() {
-    CompositeKeyPair firstKeyPair = firstAlg.generateKeyPair();
-    CompositeKeyPair secondKeyPair = secondAlg.generateKeyPair();
-    return CompositeKeyPair.of(firstKeyPair, secondKeyPair);
+  public NodeKeyPair generateKeyPair() {
+    NodeKeyPair firstKeyPair = firstAlg.generateKeyPair();
+    NodeKeyPair secondKeyPair = secondAlg.generateKeyPair();
+    return NodeKeyPair.of(firstKeyPair, secondKeyPair);
   }
 
   @Override
@@ -38,9 +38,6 @@ public class NestedHybridDSA implements DigitalSignatureAlgorithm {
             Bytes.wrap(signature1),
             Bytes.wrap(signature2)).toArrayUnsafe();
     return result;
-
-
-
   }
 
   @Override
