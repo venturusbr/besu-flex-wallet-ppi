@@ -41,12 +41,12 @@ public class App {
       // Only write the keys once, if the file doesn't already exist
       FileUtils fileUtils = new FileUtils();
       Path keyFile = fileUtils.getFilePath();
-      DigitalSignatureAlgorithm sigAlg = new NestedHybridDSA(new Secp256k1(), new MLDSA());
+      DigitalSignatureAlgorithm signatureAlgorithm = new NestedHybridDSA(new Secp256k1(), new MLDSA());
 
       // Generates the key only if the flag is present or the file does not exist
       if (shouldGenerateKeys || !Files.exists(keyFile)) {
-        CompositeKeyPair kp = sigAlg.generateKeyPair();
-        fileUtils.writeKeys(kp);
+        CompositeKeyPair keyPair = signatureAlgorithm.generateKeyPair();
+        fileUtils.writeKeys(keyPair);
         System.out.println("Generated new keys. File Path: " + keyFile);
       }
 
@@ -55,8 +55,24 @@ public class App {
       byte[] pubBytes = Base64.getDecoder().decode(keys[0]);
       byte[] privBytes = Base64.getDecoder().decode(keys[1]);
 
-      // TODO dependendo do algoritmo, receber 1 chave ou 2 chaves (caso for Nested)
-      PrivateKey sk = sigAlg.getPrivateKeyFromEncoded(privBytes);
+      PrivateKey sk;
+
+      if (signatureAlgorithm instanceof NestedHybridDSA) {
+        if (keys.length != 4) {
+          throw new UnsupportedOperationException(
+              "When using a nested hybrid digital signature algorithm, 2 key pairs are expected.");
+        }
+
+        byte[] secondPubBytes = Base64.getDecoder().decode(keys[2]);
+        byte[] secondPrivBytes = Base64.getDecoder().decode(keys[3]);
+
+        // Caso SECP256K1/MLDSA: o primeiro algoritmo suporta PKR e o segundo não. Enviar PK do segundo.
+        pubBytes = secondPubBytes;
+
+        sk = ((NestedHybridDSA) signatureAlgorithm).getPrivateKeyFromEncoded(privBytes, secondPrivBytes);
+      } else {
+        sk = signatureAlgorithm.getPrivateKeyFromEncoded(privBytes);
+      }
 
       // Build the unsigned transaction using the builder
       Transaction unsignedTransaction = new Transaction.Builder()
@@ -73,7 +89,7 @@ public class App {
         .build();
 
       // Sign and send the transaction
-      EIP1559Encoder encoder = new EIP1559Encoder(sigAlg);
+      EIP1559Encoder encoder = new EIP1559Encoder(signatureAlgorithm);
       byte[] rawTransaction = encoder.createRawTransaction(unsignedTransaction, sk);
       String tx = "0x" + EIP1559Encoder.bytesToHex(rawTransaction);
       EthSendRawTransaction.send(tx);

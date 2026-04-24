@@ -3,7 +3,10 @@ package br.org.venturus.flexwallet.crypto;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 
+import org.apache.tuweni.bytes.Bytes;
+
 import br.org.venturus.flexwallet.crypto.key.types.CompositeKeyPair;
+import br.org.venturus.flexwallet.crypto.key.types.CompositePrivateKey;
 
 public class NestedHybridDSA implements DigitalSignatureAlgorithm {
   private final DigitalSignatureAlgorithm firstAlg;
@@ -21,29 +24,35 @@ public class NestedHybridDSA implements DigitalSignatureAlgorithm {
     return CompositeKeyPair.of(firstKeyPair, secondKeyPair);
   }
 
-  // TODO Ver referência no besu crypto/algorithms/src/main/java/org/hyperledger/besu/crypto/key/types/CompositePrivateKey.java
   @Override
   public byte[] sign(byte[] data, PrivateKey privateKey) {
-    throw new UnsupportedOperationException("Use sign(byte[], PrivateKey, PrivateKey) for hybrid.");
-  }
+    CompositePrivateKey hybridPrivateKey = (CompositePrivateKey) privateKey;
 
-  // TODO Trazer comportamento pro sign de cima que recebe a CompositePrivateKey. Este sign q recebe 2 chaves deixa de existir
-  public byte[] sign(byte[] data, PrivateKey firstKey, PrivateKey secondKey) {
-    byte[] sig1 = firstAlg.sign(data, firstKey);
-    byte[] dataWithSig1 = new byte[data.length + sig1.length];
-    System.arraycopy(data, 0, dataWithSig1, 0, data.length);
-    System.arraycopy(sig1, 0, dataWithSig1, data.length, sig1.length);
+    byte[] signature1 = firstAlg.sign(data, hybridPrivateKey.getFirstKey());
+    byte[] dataWithSignature1 = Bytes.concatenate(
+            Bytes.wrap(data),
+            Bytes.wrap(signature1)).toArrayUnsafe();
 
-    byte[] sig2 = secondAlg.sign(dataWithSig1, secondKey);
-    byte[] result = new byte[sig1.length + sig2.length];
-    System.arraycopy(sig1, 0, result, 0, sig1.length);
-    System.arraycopy(sig2, 0, result, sig1.length, sig2.length);
+    byte[] signature2 = secondAlg.sign(dataWithSignature1, hybridPrivateKey.getSecondKey());
+    byte[] result = Bytes.concatenate(
+            Bytes.wrap(signature1),
+            Bytes.wrap(signature2)).toArrayUnsafe();
     return result;
+
+
+
   }
 
   @Override
   public PrivateKey getPrivateKeyFromEncoded(byte[] encoded) {
     throw new UnsupportedOperationException();
+  }
+
+  public PrivateKey getPrivateKeyFromEncoded(byte[] firstSk, byte[] secondSk) {
+    return CompositePrivateKey.create(
+      firstAlg.getPrivateKeyFromEncoded(firstSk),
+      secondAlg.getPrivateKeyFromEncoded(secondSk)
+    );
   }
 
   @Override
