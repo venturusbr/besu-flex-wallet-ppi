@@ -34,6 +34,9 @@ public class EIP1559Encoder extends TransactionEncoder {
   public byte[] createRawTransaction(Transaction unsignedTx, PrivateKey sk) {
     byte[] digest = createDigest(unsignedTx);
     byte[] signature = signatureAlgorithm.sign(digest, sk);
+    System.out.println("~~~~~~~~~~~~~~~~~~~ Signature length ~~~~~~~~~~~~~~~~~~~~~~~~~~~");
+    System.out.println(signature.length);
+    System.out.println("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
     unsignedTx.setSignature(Optional.of(signature));
     return encodeToRlp(unsignedTx);
   }

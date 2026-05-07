@@ -7,18 +7,22 @@ import java.security.PrivateKey;
 import java.security.Security;
 import java.util.Base64;
 
+import org.apache.tuweni.bytes.Bytes;
 import org.bouncycastle.pqc.jcajce.provider.BouncyCastlePQCProvider;
 import org.web3j.utils.Convert;
 
 import br.org.venturus.flexwallet.crypto.DigitalSignatureAlgorithm;
 import br.org.venturus.flexwallet.crypto.NestedHybridDSA;
 import br.org.venturus.flexwallet.crypto.Secp256k1;
+import br.org.venturus.flexwallet.crypto.key.types.GenericPrivateKey;
+import br.org.venturus.flexwallet.crypto.key.types.GenericPublicKey;
 import br.org.venturus.flexwallet.crypto.key.types.NodeKeyPair;
 import br.org.venturus.flexwallet.crypto.MLDSA;
 import br.org.venturus.flexwallet.model.Transaction;
 import br.org.venturus.flexwallet.model.encoder.EIP1559Encoder;
 import br.org.venturus.flexwallet.request.EthSendRawTransaction;
 import br.org.venturus.flexwallet.utils.FileUtils;
+import br.org.venturus.flexwallet.crypto.key.types.CompositePrivateKey;
 
 public class App {
   public static void main(String[] args) {
@@ -42,6 +46,9 @@ public class App {
       FileUtils fileUtils = new FileUtils();
       Path keyFile = fileUtils.getFilePath();
       DigitalSignatureAlgorithm signatureAlgorithm = new NestedHybridDSA(new Secp256k1(), new MLDSA());
+      // DigitalSignatureAlgorithm signatureAlgorithm = new Secp256k1();
+      // DigitalSignatureAlgorithm signatureAlgorithm = new Falcon();
+      // DigitalSignatureAlgorithm signatureAlgorithm = new MLDSA();
 
       // Generates the key only if the flag is present or the file does not exist
       if (shouldGenerateKeys || !Files.exists(keyFile)) {
@@ -54,7 +61,6 @@ public class App {
       String[] keys = fileUtils.readKeys();
       byte[] pubBytes = Base64.getDecoder().decode(keys[0]);
       byte[] privBytes = Base64.getDecoder().decode(keys[1]);
-
       PrivateKey sk;
 
       if (signatureAlgorithm instanceof NestedHybridDSA) {
@@ -66,13 +72,24 @@ public class App {
         byte[] secondPubBytes = Base64.getDecoder().decode(keys[2]);
         byte[] secondPrivBytes = Base64.getDecoder().decode(keys[3]);
 
-        // Caso SECP256K1/MLDSA: o primeiro algoritmo suporta PKR e o segundo não. Enviar PK do segundo.
+        // In case SECP256K1/MLDSA: the first algorithm supports PKR and the second doesn't.
+        // Send the Public Key of the second one.
         pubBytes = secondPubBytes;
 
-        sk = ((NestedHybridDSA) signatureAlgorithm).getPrivateKeyFromEncoded(privBytes, secondPrivBytes);
+        sk = CompositePrivateKey.create(
+            new GenericPrivateKey(Bytes.wrap(privBytes)),
+            new GenericPrivateKey(Bytes.wrap(secondPrivBytes)));
       } else {
-        sk = signatureAlgorithm.getPrivateKeyFromEncoded(privBytes);
+        sk = new GenericPrivateKey(Bytes.wrap(privBytes));
       }
+
+      System.out.println("~~~~~~~~~~~~~~~~~~ Public key length ~~~~~~~~~~~~~~~~~~~~~~~~~~~");
+      System.out.println(pubBytes.length);
+      System.out.println("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
+
+      System.out.println("~~~~~~~~~~~~~~~~~~ Secret key length ~~~~~~~~~~~~~~~~~~~~~~~~~~~");
+      System.out.println(sk.getEncoded().length);
+      System.out.println("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
 
       // Build the unsigned transaction using the builder
       Transaction unsignedTransaction = new Transaction.Builder()
