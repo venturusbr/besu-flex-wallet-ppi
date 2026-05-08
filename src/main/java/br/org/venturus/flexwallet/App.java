@@ -31,7 +31,6 @@ import br.org.venturus.flexwallet.crypto.DigitalSignatureAlgorithm;
 import br.org.venturus.flexwallet.crypto.NestedHybridDSA;
 import br.org.venturus.flexwallet.crypto.Secp256k1;
 import br.org.venturus.flexwallet.crypto.key.types.GenericPrivateKey;
-import br.org.venturus.flexwallet.crypto.key.types.GenericPublicKey;
 import br.org.venturus.flexwallet.crypto.key.types.NodeKeyPair;
 import br.org.venturus.flexwallet.crypto.MLDSA;
 import br.org.venturus.flexwallet.model.Transaction;
