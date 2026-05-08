@@ -44,9 +44,10 @@ public class EthSendRawTransaction {
 
   static {
     PoolingHttpClientConnectionManager connectionManager =
-        PoolingHttpClientConnectionManagerBuilder.create().build();
-    connectionManager.setMaxTotal(MAX_TOTAL_CONNECTIONS);
-    connectionManager.setDefaultMaxPerRoute(MAX_CONNECTIONS_PER_ROUTE);
+        PoolingHttpClientConnectionManagerBuilder.create()
+            .setMaxConnTotal(MAX_TOTAL_CONNECTIONS)
+            .setMaxConnPerRoute(MAX_CONNECTIONS_PER_ROUTE)
+            .build();
 
     RequestConfig requestConfig = RequestConfig.custom()
         .setConnectTimeout(CONNECT_TIMEOUT)
