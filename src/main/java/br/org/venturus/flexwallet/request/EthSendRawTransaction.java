@@ -58,14 +58,11 @@ public class EthSendRawTransaction {
         .setDefaultRequestConfig(requestConfig)
         .build();
 
-    // Best-effort cleanup so the JVM doesn't leak the pool if main returns abruptly.
-    Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-      try {
-        HTTP_CLIENT.close();
-      } catch (Exception ignored) {
-        // Nothing useful to do on shutdown.
-      }
-    }, "EthSendRawTransaction-shutdown"));
+    // No shutdown hook on purpose. The pool only owns sockets + a manager thread, both of which
+    // the OS reclaims on process exit; there's no buffered state to flush. A hook would also race
+    // with mvn exec:java's classloader teardown — the plugin closes its custom classloader before
+    // shutdown hooks run, which makes HttpClient.close() throw NoClassDefFoundError when it tries
+    // to reference org.apache.hc.core5.io.CloseMode.
   }
 
   /**

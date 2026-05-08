@@ -42,10 +42,16 @@
       <artifactId>httpclient5</artifactId>
       <version>5.3.1</version>
     </dependency>
+    <!--
+      SLF4J binding. web3j-core, httpclient5, and tuweni-bytes all use SLF4J 1.7.x; without a
+      binding they fall back to NOP and print the "Failed to load class StaticLoggerBinder"
+      warning at startup. slf4j-simple is a tiny binding that goes straight to stderr and is
+      configured by src/main/resources/simplelogger.properties (default level: warn).
+    -->
     <dependency>
-        <groupId>org.apache.httpcomponents.client5</groupId>
-        <artifactId>httpclient5-fluent</artifactId>
-        <version>5.3.1</version>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-simple</artifactId>
+      <version>1.7.36</version>
     </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
