@@ -16,6 +16,7 @@ import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -30,6 +31,7 @@ import br.org.venturus.flexwallet.crypto.DigitalSignatureAlgorithm;
 import br.org.venturus.flexwallet.crypto.NestedHybridDSA;
 import br.org.venturus.flexwallet.crypto.Secp256k1;
 import br.org.venturus.flexwallet.crypto.key.types.GenericPrivateKey;
+import br.org.venturus.flexwallet.crypto.key.types.GenericPublicKey;
 import br.org.venturus.flexwallet.crypto.key.types.NodeKeyPair;
 import br.org.venturus.flexwallet.crypto.MLDSA;
 import br.org.venturus.flexwallet.model.Transaction;
@@ -41,10 +43,21 @@ import br.org.venturus.flexwallet.crypto.key.types.CompositePrivateKey;
 public class App {
 
   /**
-   * Worker threads used to send transactions concurrently in --txAmount batch mode.
-   *
-   * <p>Bumping this raises throughput up to the point where Besu's mempool / RPC handler becomes
-   * the bottleneck; 16 is a safe default that keeps `localhost:8545` busy without flooding it.
+   * Default RPC endpoints used in --txAmount batch mode when --nodes is not provided. Round-robin
+   * by nonce: nonce 0 -> [0], nonce 1 -> [1], …
+   */
+  private static final String[] DEFAULT_BATCH_ENDPOINTS = {
+      "http://localhost:8545",
+      "http://localhost:8546",
+      "http://localhost:8547",
+      "http://localhost:8548",
+  };
+
+  /**
+   * Worker threads used to send transactions concurrently in --txAmount batch mode. Distributing
+   * across multiple endpoints means each route sees roughly DEFAULT_CONCURRENCY / N_ENDPOINTS
+   * concurrent connections, so the per-route 5-connection default in Apache HttpClient's fluent
+   * pool is comfortable for the default 4-node fan-out.
    */
   private static final int DEFAULT_CONCURRENCY = 16;
 
@@ -52,9 +65,17 @@ public class App {
   private static final long POOL_SHUTDOWN_TIMEOUT_SECONDS = 120L;
 
   /** CSV header for batch-mode result file. */
-  private static final String CSV_HEADER = "nonce,status,txHash,errorMessage,elapsedMs,timestamp";
+  private static final String CSV_HEADER =
+      "nonce,endpoint,status,txHash,errorMessage,elapsedMs,timestamp";
 
   public static void main(String[] args) {
+    // --help short-circuits all setup so that calling it on a misconfigured environment
+    // (missing key file, no provider, etc.) still prints usage instead of crashing.
+    if (parseHelp(args)) {
+      printHelp();
+      return;
+    }
+
     try {
       // Register the PQC provider if it is not already registered
       if (Security.getProvider("BCPQC") == null) {
@@ -81,6 +102,16 @@ public class App {
 
       // Optional --output PATH for the batch CSV; defaults to tx_results_<ts>.csv in cwd.
       String outputPath = parseOutputPath(args);
+
+      // Optional --nodes URL1,URL2,... ; null means "use the default endpoints".
+      String[] nodesArg = parseNodes(args);
+
+      // Resolve the endpoints used for batch and single-tx modes from --nodes (if provided)
+      // or fall back to defaults. In single-tx mode we use the first URL the user supplied
+      // — sending a single tx to multiple endpoints doesn't make sense.
+      String[] batchEndpoints = nodesArg != null ? nodesArg : DEFAULT_BATCH_ENDPOINTS;
+      String singleEndpoint =
+          nodesArg != null ? nodesArg[0] : EthSendRawTransaction.DEFAULT_ENDPOINT;
 
       // Only write the keys once, if the file doesn't already exist
       FileUtils fileUtils = new FileUtils();
@@ -139,18 +170,21 @@ public class App {
       EIP1559Encoder encoder = new EIP1559Encoder(signatureAlgorithm, !batchMode);
 
       if (!batchMode) {
-        // Original single-transaction path: nonce = 0, no thread pool, no CSV, no summary.
+        // Original single-transaction path: nonce = 0, single endpoint, no thread pool, no CSV.
         Transaction unsignedTransaction = buildTransaction(BigInteger.ZERO, pubBytes);
         byte[] rawTransaction = encoder.createRawTransaction(unsignedTransaction, sk);
         String tx = "0x" + EIP1559Encoder.bytesToHex(rawTransaction);
-        EthSendRawTransaction.send(tx); // verbose=true by default — prints "Result: ..."
+        EthSendRawTransaction.send(tx, singleEndpoint, true);
         return;
       }
 
       // ------------------------- Parallel batch send ----------------------------
-      // Each task builds its own transaction, signs it, POSTs to localhost:8545, and returns a
-      // TxResult. EthSendRawTransaction.send is invoked with verbose=false so the per-call
-      // "Result: ..." line is suppressed — every outcome is captured in the CSV instead.
+      // Each task builds its own transaction, signs it, POSTs to its assigned endpoint, and
+      // returns a TxResult. EthSendRawTransaction.send is invoked with verbose=false so the
+      // per-call "Result: ..." line is suppressed — every outcome is captured in the CSV.
+      //
+      // Endpoints are assigned round-robin by nonce: nonce 0 -> [0], nonce 1 -> [1], ... so over
+      // a long batch each node sees roughly txAmount / batchEndpoints.length transactions.
       int threads = Math.min(txAmount, DEFAULT_CONCURRENCY);
       ExecutorService pool = Executors.newFixedThreadPool(threads);
       List<Future<TxResult>> futures = new ArrayList<>(txAmount);
@@ -159,18 +193,19 @@ public class App {
       final byte[] pubBytesCapt = pubBytes;
       final PrivateKey skCapt = sk;
       final EIP1559Encoder encoderCapt = encoder;
+      final String[] endpointsCapt = batchEndpoints;
 
       List<TxResult> results = new ArrayList<>(txAmount);
 
       try {
         for (int i = 0; i < txAmount; i++) {
           final BigInteger nonce = BigInteger.valueOf(i);
-          futures.add(pool.submit(() -> sendOne(nonce, pubBytesCapt, skCapt, encoderCapt)));
+          final String endpoint = endpointsCapt[i % endpointsCapt.length];
+          futures.add(
+              pool.submit(() -> sendOne(nonce, endpoint, pubBytesCapt, skCapt, encoderCapt)));
         }
 
-        // Drain results in submission (= nonce) order. Each future.get() blocks until that task
-        // completes, but other tasks continue running in parallel, so total wall-clock time is
-        // bounded by the slowest task, not the sum.
+        // Drain results in submission (= nonce) order.
         for (Future<TxResult> future : futures) {
           try {
             results.add(future.get());
@@ -180,6 +215,7 @@ public class App {
             results.add(
                 TxResult.failure(
                     BigInteger.valueOf(-1),
+                    "<unknown>",
                     null,
                     "task crashed: "
                         + cause.getClass().getSimpleName()
@@ -190,7 +226,12 @@ public class App {
             Thread.currentThread().interrupt();
             results.add(
                 TxResult.failure(
-                    BigInteger.valueOf(-1), null, "interrupted while waiting", 0L, Instant.now()));
+                    BigInteger.valueOf(-1),
+                    "<unknown>",
+                    null,
+                    "interrupted while waiting",
+                    0L,
+                    Instant.now()));
             break;
           }
         }
@@ -214,11 +255,16 @@ public class App {
       int failureCount = 0;
       // LinkedHashMap so we preserve first-seen order when grouping failures by message.
       Map<String, Integer> failureCountsByMessage = new LinkedHashMap<>();
+      // TreeMap so the per-endpoint breakdown is sorted by URL — easy to scan.
+      Map<String, int[]> perEndpoint = new TreeMap<>(); // value: [success, failure]
       for (TxResult r : results) {
+        int[] bucket = perEndpoint.computeIfAbsent(r.endpoint, k -> new int[2]);
         if (r.success) {
           successCount++;
+          bucket[0]++;
         } else {
           failureCount++;
+          bucket[1]++;
           failureCountsByMessage.merge(
               r.errorMessage == null ? "<unknown>" : r.errorMessage, 1, Integer::sum);
         }
@@ -229,6 +275,13 @@ public class App {
       System.out.println("Total:     " + txAmount);
       System.out.println("Succeeded: " + successCount);
       System.out.println("Failed:    " + failureCount);
+      System.out.println("Per-endpoint:");
+      for (Map.Entry<String, int[]> e : perEndpoint.entrySet()) {
+        int ok = e.getValue()[0];
+        int fail = e.getValue()[1];
+        System.out.println(
+            "  - " + e.getKey() + "  ok=" + ok + "  fail=" + fail + "  total=" + (ok + fail));
+      }
       if (!failureCountsByMessage.isEmpty()) {
         System.out.println("Failure breakdown:");
         for (Map.Entry<String, Integer> e : failureCountsByMessage.entrySet()) {
@@ -259,11 +312,11 @@ public class App {
   }
 
   /**
-   * Build, sign, and POST a single transaction. Always returns a {@link TxResult} — the worker
-   * never throws, so a single bad request can't take down the whole batch.
+   * Build, sign, and POST a single transaction to {@code endpoint}. Always returns a {@link
+   * TxResult} — the worker never throws, so a single bad request can't take down the whole batch.
    */
   private static TxResult sendOne(
-      BigInteger nonce, byte[] pubBytes, PrivateKey sk, EIP1559Encoder encoder) {
+      BigInteger nonce, String endpoint, byte[] pubBytes, PrivateKey sk, EIP1559Encoder encoder) {
     Instant timestamp = Instant.now();
     long startNs = System.nanoTime();
     try {
@@ -271,20 +324,20 @@ public class App {
       byte[] rawTransaction = encoder.createRawTransaction(unsignedTransaction, sk);
       String tx = "0x" + EIP1559Encoder.bytesToHex(rawTransaction);
 
-      // verbose=false: don't print "Result: ..." — the caller (App.main) captures the response
-      // in the CSV instead.
-      String response = EthSendRawTransaction.send(tx, false);
+      String response = EthSendRawTransaction.send(tx, endpoint, false);
       long elapsedMs = (System.nanoTime() - startNs) / 1_000_000L;
 
       if (isJsonRpcError(response)) {
         return TxResult.failure(
-            nonce, null, extractJsonRpcErrorMessage(response), elapsedMs, timestamp);
+            nonce, endpoint, null, extractJsonRpcErrorMessage(response), elapsedMs, timestamp);
       }
-      return TxResult.success(nonce, extractJsonRpcResult(response), elapsedMs, timestamp);
+      return TxResult.success(
+          nonce, endpoint, extractJsonRpcResult(response), elapsedMs, timestamp);
     } catch (Exception e) {
       long elapsedMs = (System.nanoTime() - startNs) / 1_000_000L;
       return TxResult.failure(
           nonce,
+          endpoint,
           null,
           e.getClass().getSimpleName() + (e.getMessage() == null ? "" : ": " + e.getMessage()),
           elapsedMs,
@@ -295,6 +348,18 @@ public class App {
   // -----------------------------------------------------------------------------------------
   // CLI parsing
   // -----------------------------------------------------------------------------------------
+
+  /** True when {@code --help} or {@code -h} is anywhere in the args list. */
+  private static boolean parseHelp(String[] args) {
+    for (String a : args) {
+      if (a == null) continue;
+      String lower = a.toLowerCase();
+      if (lower.equals("--help") || lower.equals("-h")) {
+        return true;
+      }
+    }
+    return false;
+  }
 
   /**
    * Look for {@code --txAmount N} or {@code --txAmount=N} on the command line.
@@ -344,12 +409,121 @@ public class App {
     return null;
   }
 
+  /**
+   * Optional {@code --nodes URL1,URL2,...} or {@code --nodes=URL1,URL2,...}. Returns the list of
+   * trimmed, non-empty URLs, or {@code null} when the flag is absent (use the defaults).
+   */
+  private static String[] parseNodes(String[] args) {
+    for (int i = 0; i < args.length; i++) {
+      String a = args[i];
+      String lower = a.toLowerCase();
+
+      if (lower.equals("--nodes")) {
+        if (i + 1 >= args.length) {
+          throw new IllegalArgumentException(
+              "--nodes requires a comma-separated list of URLs");
+        }
+        return splitNodes(args[i + 1]);
+      }
+
+      if (lower.startsWith("--nodes=")) {
+        return splitNodes(a.substring("--nodes=".length()));
+      }
+    }
+    return null;
+  }
+
+  private static String[] splitNodes(String value) {
+    if (value == null || value.isEmpty()) {
+      throw new IllegalArgumentException("--nodes value cannot be empty");
+    }
+    String[] parts = value.split(",");
+    List<String> cleaned = new ArrayList<>(parts.length);
+    for (String p : parts) {
+      String trimmed = p.trim();
+      if (!trimmed.isEmpty()) {
+        cleaned.add(trimmed);
+      }
+    }
+    if (cleaned.isEmpty()) {
+      throw new IllegalArgumentException("--nodes value must contain at least one URL");
+    }
+    return cleaned.toArray(new String[0]);
+  }
+
   private static int parseIntOrThrow(String value) {
     try {
       return Integer.parseInt(value);
     } catch (NumberFormatException e) {
       throw new IllegalArgumentException("--txAmount value must be an integer; got: " + value);
     }
+  }
+
+  /** Print the usage block to stdout. Called when --help / -h is detected. */
+  private static void printHelp() {
+    StringBuilder sb = new StringBuilder();
+    sb.append("Flexwallet — sign EIP-1559-style transactions and POST them to JSON-RPC nodes.\n")
+        .append('\n')
+        .append("USAGE\n")
+        .append("  mvn exec:java -Dexec.args=\"[OPTIONS]\"\n")
+        .append("  (omit -Dexec.args to run with no flags)\n")
+        .append('\n')
+        .append("OPTIONS\n")
+        .append("  --help, -h              Print this help and exit.\n")
+        .append('\n')
+        .append("  --generateKeys          Force regeneration of the key pair file. Without\n")
+        .append("                          this flag, keys are generated only if the key file\n")
+        .append("                          does not already exist.\n")
+        .append('\n')
+        .append("  --txAmount N            Batch mode. Sign and send N transactions in\n")
+        .append("                          parallel using nonces 0..N-1, distributing them\n")
+        .append("                          round-robin across the endpoints in --nodes. Per-\n")
+        .append("                          transaction outcomes are written to a CSV instead\n")
+        .append("                          of stdout. Without this flag the app sends a\n")
+        .append("                          single transaction with nonce 0 and prints the\n")
+        .append("                          JSON-RPC response to stdout.\n")
+        .append('\n')
+        .append("  --nodes URL1,URL2,...   Comma-separated JSON-RPC endpoints. In batch mode\n")
+        .append("                          (--txAmount), transactions are distributed across\n")
+        .append("                          them round-robin by nonce. In single-tx mode only\n")
+        .append("                          the first URL is used.\n")
+        .append("                          Defaults: ")
+        .append(joinDefault(DEFAULT_BATCH_ENDPOINTS))
+        .append("\n                                    in batch mode,\n")
+        .append("                                    ")
+        .append(EthSendRawTransaction.DEFAULT_ENDPOINT)
+        .append(" in single-tx mode.\n")
+        .append('\n')
+        .append("  --output PATH           Path for the batch CSV. Defaults to\n")
+        .append("                          tx_results_<yyyyMMdd-HHmmss>.csv in the current\n")
+        .append("                          working directory. Ignored in single-tx mode.\n")
+        .append('\n')
+        .append("EXAMPLES\n")
+        .append("  Single tx to ").append(EthSendRawTransaction.DEFAULT_ENDPOINT).append(":\n")
+        .append("    mvn exec:java\n")
+        .append('\n')
+        .append("  Generate keys and send 100 tx across the 4 default nodes:\n")
+        .append("    mvn exec:java -Dexec.args=\"--generateKeys --txAmount 100\"\n")
+        .append('\n')
+        .append("  10k tx with a custom CSV path:\n")
+        .append("    mvn exec:java -Dexec.args=\"--txAmount 10000 --output /tmp/run42.csv\"\n")
+        .append('\n')
+        .append("  1k tx across 2 specific nodes:\n")
+        .append("    mvn exec:java -Dexec.args=\"--txAmount 1000 \\\n")
+        .append("      --nodes http://node1:8545,http://node2:8545\"\n")
+        .append('\n')
+        .append("  Show this help:\n")
+        .append("    mvn exec:java -Dexec.args=\"--help\"\n");
+    System.out.print(sb);
+  }
+
+  private static String joinDefault(String[] urls) {
+    StringBuilder sb = new StringBuilder();
+    for (int i = 0; i < urls.length; i++) {
+      if (i > 0) sb.append(',');
+      sb.append(urls[i]);
+    }
+    return sb.toString();
   }
 
   // -----------------------------------------------------------------------------------------
@@ -447,6 +621,8 @@ public class App {
       for (TxResult r : results) {
         w.write(r.nonce.toString());
         w.write(',');
+        w.write(csvEscape(r.endpoint));
+        w.write(',');
         w.write(r.success ? "success" : "failure");
         w.write(',');
         w.write(csvEscape(r.txHash));
@@ -484,6 +660,7 @@ public class App {
   /** Per-task outcome carried back from a worker thread and serialized to CSV. */
   private static final class TxResult {
     final BigInteger nonce;
+    final String endpoint;
     final boolean success;
     final String txHash; // populated on success, null on failure
     final String errorMessage; // populated on failure, null on success
@@ -492,12 +669,14 @@ public class App {
 
     private TxResult(
         BigInteger nonce,
+        String endpoint,
         boolean success,
         String txHash,
         String errorMessage,
         long elapsedMs,
         Instant timestamp) {
       this.nonce = nonce;
+      this.endpoint = endpoint;
       this.success = success;
       this.txHash = txHash;
       this.errorMessage = errorMessage;
@@ -505,13 +684,19 @@ public class App {
       this.timestamp = timestamp;
     }
 
-    static TxResult success(BigInteger nonce, String txHash, long elapsedMs, Instant timestamp) {
-      return new TxResult(nonce, true, txHash, null, elapsedMs, timestamp);
+    static TxResult success(
+        BigInteger nonce, String endpoint, String txHash, long elapsedMs, Instant timestamp) {
+      return new TxResult(nonce, endpoint, true, txHash, null, elapsedMs, timestamp);
     }
 
     static TxResult failure(
-        BigInteger nonce, String txHash, String errorMessage, long elapsedMs, Instant timestamp) {
-      return new TxResult(nonce, false, txHash, errorMessage, elapsedMs, timestamp);
+        BigInteger nonce,
+        String endpoint,
+        String txHash,
+        String errorMessage,
+        long elapsedMs,
+        Instant timestamp) {
+      return new TxResult(nonce, endpoint, false, txHash, errorMessage, elapsedMs, timestamp);
     }
   }
 }
