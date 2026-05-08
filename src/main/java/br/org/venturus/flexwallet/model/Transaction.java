@@ -15,6 +15,8 @@ import org.web3j.rlp.RlpString;
 import org.web3j.rlp.RlpType;
 import org.web3j.utils.Numeric;
 
+import org.apache.tuweni.bytes.Bytes;
+
 public class Transaction {
   private long chainId;
   private BigInteger nonce;
@@ -153,7 +155,9 @@ public class Transaction {
 
   public List<RlpType> asRlpValues(Optional<byte[]> signature) {
     List<RlpType> result = new ArrayList<>();
-    result.add(RlpString.create(dsaType));
+    result.add(RlpString.create(
+        Bytes.ofUnsignedShort(dsaType).toArray()
+    ));
     result.add(RlpString.create(chainId));
     result.add(RlpString.create(nonce));
     result.add(RlpString.create(maxPriorityFeePerGas));

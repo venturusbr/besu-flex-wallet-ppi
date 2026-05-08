@@ -25,7 +25,7 @@ public class EIP1559Encoder extends TransactionEncoder {
     RlpList rlpList = new RlpList(values);
     byte[] encoded = RlpEncoder.encode(rlpList);
     return ByteBuffer.allocate(encoded.length + 1)
-        .put((byte) 0x02) // EIP-1559 type
+        .put((byte) 0x42) // EIP-1559 type
         .put(encoded)
         .array();
   }
