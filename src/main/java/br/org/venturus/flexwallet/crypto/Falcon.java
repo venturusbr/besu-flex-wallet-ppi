@@ -4,7 +4,7 @@ import java.security.*;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.pqc.jcajce.spec.FalconParameterSpec;
 
-import br.org.venturus.flexwallet.crypto.key.types.CompositeKeyPair;
+import br.org.venturus.flexwallet.crypto.key.types.NodeKeyPair;
 
 public class Falcon implements DigitalSignatureAlgorithm {
   static {
@@ -12,12 +12,12 @@ public class Falcon implements DigitalSignatureAlgorithm {
   }
 
   @Override
-  public CompositeKeyPair generateKeyPair() {
+  public NodeKeyPair generateKeyPair() {
     try {
       KeyPairGenerator kpg = KeyPairGenerator.getInstance("Falcon", "BCPQC");
       kpg.initialize(FalconParameterSpec.falcon_512); // Falcon-512
       KeyPair kp = kpg.generateKeyPair();
-      return CompositeKeyPair.of(kp.getPrivate(), kp.getPublic());
+      return NodeKeyPair.of(kp.getPrivate(), kp.getPublic());
     } catch (Exception e) {
       throw new RuntimeException(e);
     }

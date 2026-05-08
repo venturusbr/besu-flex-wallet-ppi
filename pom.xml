@@ -9,6 +9,8 @@
   <properties>
     <maven.compiler.source>21</maven.compiler.source>
     <maven.compiler.target>21</maven.compiler.target>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
   </properties>
   <dependencies>
     <dependency>
@@ -23,14 +25,37 @@
       <exclusions>
         <exclusion>
           <groupId>org.bouncycastle</groupId>
-          <artifactId>bcprov-jdk15on</artifactId>
+          <artifactId>*</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+    <!--
+      Replaced web3j-core (which dragged in OkHttp, RxJava, JNR-Unixsocket and a long
+      transitive tail) with the two specific web3j modules the project actually uses:
+        - utils  -> org.web3j.utils.Convert (used in App.buildTransaction)
+        - crypto -> org.web3j.crypto.AccessListObject (used in model/Transaction.java)
+    -->
+    <dependency>
+      <groupId>org.web3j</groupId>
+      <artifactId>utils</artifactId>
+      <version>4.9.8</version>
+      <exclusions>
+        <exclusion>
+          <groupId>org.bouncycastle</groupId>
+          <artifactId>*</artifactId>
         </exclusion>
       </exclusions>
     </dependency>
     <dependency>
       <groupId>org.web3j</groupId>
-      <artifactId>core</artifactId>
+      <artifactId>crypto</artifactId>
       <version>4.9.8</version>
+      <exclusions>
+        <exclusion>
+          <groupId>org.bouncycastle</groupId>
+          <artifactId>*</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
@@ -42,10 +67,16 @@
       <artifactId>httpclient5</artifactId>
       <version>5.3.1</version>
     </dependency>
+    <!--
+      SLF4J binding. web3j-core, httpclient5, and tuweni-bytes all use SLF4J 1.7.x; without a
+      binding they fall back to NOP and print the "Failed to load class StaticLoggerBinder"
+      warning at startup. slf4j-simple is a tiny binding that goes straight to stderr and is
+      configured by src/main/resources/simplelogger.properties (default level: warn).
+    -->
     <dependency>
-        <groupId>org.apache.httpcomponents.client5</groupId>
-        <artifactId>httpclient5-fluent</artifactId>
-        <version>5.3.1</version>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-simple</artifactId>
+      <version>1.7.36</version>
     </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>

@@ -1,10 +1,23 @@
 package br.org.venturus.flexwallet.crypto;
 
 import java.security.*;
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
-import org.bouncycastle.pqc.jcajce.spec.DilithiumParameterSpec;
 
-import br.org.venturus.flexwallet.crypto.key.types.CompositeKeyPair;
+import org.apache.tuweni.bytes.Bytes;
+import org.bouncycastle.crypto.AsymmetricCipherKeyPair;
+import org.bouncycastle.crypto.CryptoException;
+import org.bouncycastle.crypto.DataLengthException;
+import org.bouncycastle.crypto.KeyGenerationParameters;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.pqc.crypto.mldsa.MLDSAKeyGenerationParameters;
+import org.bouncycastle.pqc.crypto.mldsa.MLDSAKeyPairGenerator;
+import org.bouncycastle.pqc.crypto.mldsa.MLDSAParameters;
+import org.bouncycastle.pqc.crypto.mldsa.MLDSAPrivateKeyParameters;
+import org.bouncycastle.pqc.crypto.mldsa.MLDSAPublicKeyParameters;
+import org.bouncycastle.pqc.crypto.mldsa.MLDSASigner;
+
+import br.org.venturus.flexwallet.crypto.key.types.GenericPrivateKey;
+import br.org.venturus.flexwallet.crypto.key.types.GenericPublicKey;
+import br.org.venturus.flexwallet.crypto.key.types.NodeKeyPair;
 
 public class MLDSA implements DigitalSignatureAlgorithm {
   static {
@@ -12,25 +25,35 @@ public class MLDSA implements DigitalSignatureAlgorithm {
   }
 
   @Override
-  public CompositeKeyPair generateKeyPair() {
-    try {
-      KeyPairGenerator kpg = KeyPairGenerator.getInstance("Dilithium", "BCPQC");
-      kpg.initialize(DilithiumParameterSpec.dilithium3);
-      KeyPair kp = kpg.generateKeyPair();
-      return CompositeKeyPair.of(kp.getPrivate(), kp.getPublic());
-    } catch (Exception e) {
-      throw new RuntimeException(e);
-    }
+  public NodeKeyPair generateKeyPair() {
+    MLDSAKeyPairGenerator mldsaKpGenerator = new MLDSAKeyPairGenerator();
+    KeyGenerationParameters genParams = new MLDSAKeyGenerationParameters(new SecureRandom(), MLDSAParameters.ml_dsa_44);
+
+    mldsaKpGenerator.init(genParams);
+    AsymmetricCipherKeyPair mldsaKp = mldsaKpGenerator.generateKeyPair();
+
+    MLDSAPrivateKeyParameters skParams = (MLDSAPrivateKeyParameters) mldsaKp.getPrivate();
+    MLDSAPublicKeyParameters pkParams = (MLDSAPublicKeyParameters) mldsaKp.getPublic();
+
+    Bytes rawSk = Bytes.wrap(skParams.getEncoded());
+    Bytes rawPk = Bytes.wrap(pkParams.getEncoded());
+
+    NodeKeyPair kp = NodeKeyPair.of(new GenericPrivateKey(rawSk), new GenericPublicKey(rawPk));
+
+    return kp;
   }
 
   @Override
   public byte[] sign(byte[] data, PrivateKey privateKey) {
+    MLDSAPrivateKeyParameters skParams = new MLDSAPrivateKeyParameters(MLDSAParameters.ml_dsa_44,
+        privateKey.getEncoded());
+    MLDSASigner signerAndVerifier = new MLDSASigner();
+    signerAndVerifier.init(true, skParams);
+    signerAndVerifier.update(data, 0, data.length);
+
     try {
-      Signature sig = Signature.getInstance("Dilithium", "BCPQC");
-      sig.initSign(privateKey, new SecureRandom());
-      sig.update(data);
-      return sig.sign();
-    } catch (Exception e) {
+      return signerAndVerifier.generateSignature();
+    } catch (DataLengthException | CryptoException e) {
       throw new RuntimeException(e);
     }
   }

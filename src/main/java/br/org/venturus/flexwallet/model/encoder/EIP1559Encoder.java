@@ -14,9 +14,21 @@ import java.util.Optional;
 
 public class EIP1559Encoder extends TransactionEncoder {
   private final DigitalSignatureAlgorithm signatureAlgorithm;
+  private final boolean verbose;
 
+  /** Default-verbose constructor — preserves the existing console output for single-tx runs. */
   public EIP1559Encoder(DigitalSignatureAlgorithm signatureAlgorithm) {
+    this(signatureAlgorithm, true);
+  }
+
+  /**
+   * @param verbose when {@code false}, suppress the inline {@code Signature length} debug
+   *     printlns. App.java sets this to {@code false} for {@code --txAmount} batch runs so the
+   *     output of N concurrent signs doesn't drown out the summary.
+   */
+  public EIP1559Encoder(DigitalSignatureAlgorithm signatureAlgorithm, boolean verbose) {
     this.signatureAlgorithm = signatureAlgorithm;
+    this.verbose = verbose;
   }
 
   @Override
@@ -25,7 +37,7 @@ public class EIP1559Encoder extends TransactionEncoder {
     RlpList rlpList = new RlpList(values);
     byte[] encoded = RlpEncoder.encode(rlpList);
     return ByteBuffer.allocate(encoded.length + 1)
-        .put((byte) 0x02) // EIP-1559 type
+        .put((byte) 0x42) // Flexible EIP-1559 type
         .put(encoded)
         .array();
   }
@@ -34,6 +46,11 @@ public class EIP1559Encoder extends TransactionEncoder {
   public byte[] createRawTransaction(Transaction unsignedTx, PrivateKey sk) {
     byte[] digest = createDigest(unsignedTx);
     byte[] signature = signatureAlgorithm.sign(digest, sk);
+    if (verbose) {
+      System.out.println("~~~~~~~~~~~~~~~~~~~ Signature length ~~~~~~~~~~~~~~~~~~~~~~~~~~~");
+      System.out.println(signature.length);
+      System.out.println("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
+    }
     unsignedTx.setSignature(Optional.of(signature));
     return encodeToRlp(unsignedTx);
   }
