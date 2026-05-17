@@ -29,14 +29,17 @@ public final class CliArgs {
   private final String[] nodes; // null -> use defaults
   private final Double maxRate; // null -> no throttling
   private final boolean generateKeys;
+  private final String dsaMode; // new field
+  
 
   private CliArgs(
-      Integer txAmount, String outputPath, String[] nodes, Double maxRate, boolean generateKeys) {
+      Integer txAmount, String outputPath, String[] nodes, Double maxRate, boolean generateKeys, String dsaMode) {
     this.txAmount = txAmount;
     this.outputPath = outputPath;
     this.nodes = nodes;
     this.maxRate = maxRate;
     this.generateKeys = generateKeys;
+    this.dsaMode = dsaMode;
   }
 
   // --- Accessors ---------------------------------------------------------------------------
@@ -63,6 +66,11 @@ public final class CliArgs {
   /** Caller-supplied max TPS, or {@code null} for no throttling. */
   public Double maxRate() {
     return maxRate;
+  }
+
+  /** Returns the DSA mode string, e.g. "EIP1559" or "FlexibleEIP1559". Defaults to "FlexibleEIP1559". */
+  public String dsaMode() {
+    return dsaMode != null ? dsaMode : "FlexibleEIP1559";
   }
 
   public boolean generateKeys() {
@@ -112,7 +120,7 @@ public final class CliArgs {
     }
 
     return new CliArgs(
-        txAmount, parseOutputPath(args), parseNodes(args), parseMaxRate(args), generateKeys);
+        txAmount, parseOutputPath(args), parseNodes(args), parseMaxRate(args), generateKeys, parseDsaMode(args));
   }
 
   // --- Individual flag parsers ------------------------------------------------------------
@@ -182,6 +190,20 @@ public final class CliArgs {
       }
       if (lower.startsWith("--maxrate=")) {
         return parsePositiveDoubleOrThrow("--maxRate", a.substring("--maxrate=".length()));
+      }
+    }
+    return null;
+  }
+
+  private static String parseDsaMode(String[] args) {
+    for (int i = 0; i < args.length; i++) {
+      String lower = args[i].toLowerCase();
+      if (lower.equals("--dsa-mode")) {
+        if (i + 1 >= args.length) throw new IllegalArgumentException("--dsa-mode requires a value (e.g. EIP1559 or FlexibleEIP1559)");
+        return args[i + 1];
+      }
+      if (lower.startsWith("--dsa-mode=")) {
+        return args[i].substring("--dsa-mode=".length());
       }
     }
     return null;
