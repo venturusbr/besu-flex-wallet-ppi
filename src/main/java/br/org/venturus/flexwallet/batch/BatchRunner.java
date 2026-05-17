@@ -22,6 +22,8 @@ import org.web3j.utils.Convert;
 import br.org.venturus.flexwallet.cli.CliArgs;
 import br.org.venturus.flexwallet.model.Transaction;
 import br.org.venturus.flexwallet.model.encoder.EIP1559Encoder;
+import br.org.venturus.flexwallet.model.encoder.FlexibleEIP1559Encoder;
+import br.org.venturus.flexwallet.model.encoder.TransactionEncoder;
 import br.org.venturus.flexwallet.request.EthSendRawTransaction;
 
 /**
@@ -45,14 +47,14 @@ public final class BatchRunner {
   private final CliArgs cli;
   private final byte[] pubBytes;
   private final PrivateKey sk;
-  private final EIP1559Encoder encoder;
+  private final TransactionEncoder encoder;
 
   // Counters updated by workers, read by the ProgressReporter.
   private final AtomicInteger completed = new AtomicInteger();
   private final AtomicInteger succeeded = new AtomicInteger();
   private final AtomicInteger failed = new AtomicInteger();
 
-  public BatchRunner(CliArgs cli, byte[] pubBytes, PrivateKey sk, EIP1559Encoder encoder) {
+  public BatchRunner(CliArgs cli, byte[] pubBytes, PrivateKey sk, TransactionEncoder encoder) {
     this.cli = cli;
     this.pubBytes = pubBytes;
     this.sk = sk;
@@ -150,7 +152,7 @@ public final class BatchRunner {
     try {
       Transaction unsigned = buildTransaction(nonce);
       byte[] raw = encoder.createRawTransaction(unsigned, sk);
-      String tx = "0x" + EIP1559Encoder.bytesToHex(raw);
+      String tx = "0x" + bytesToHex(raw);
 
       String response = EthSendRawTransaction.send(tx, endpoint, false);
       long elapsedMs = (System.nanoTime() - startNs) / 1_000_000L;
@@ -186,9 +188,10 @@ public final class BatchRunner {
     return result;
   }
 
-  private Transaction buildTransaction(BigInteger nonce) {
-    return new Transaction.Builder()
-        .dsaType((short) 0x0060)
+ private Transaction buildTransaction(BigInteger nonce) {
+    boolean isLegacy = encoder instanceof EIP1559Encoder;
+ 
+    Transaction.Builder builder = new Transaction.Builder()
         .chainId(381660666L)
         .nonce(nonce)
         .to("0xf17f52151EbEF6C7334FAD080c5704D77216b732")
@@ -196,9 +199,20 @@ public final class BatchRunner {
         .data("")
         .gasLimit(BigInteger.valueOf(1_000_000))
         .maxPriorityFeePerGas(BigInteger.ZERO)
-        .maxFeePerGas(BigInteger.ZERO)
-        .publicKey(pubBytes)
-        .build();
+        .maxFeePerGas(BigInteger.ZERO);
+ 
+    if (!isLegacy) {
+      // Flexible/PQC transactions carry dsaType and publicKey
+      builder.dsaType((short) 0x0060).publicKey(pubBytes);
+    }
+ 
+    return builder.build();
+  }
+
+  private static String bytesToHex(byte[] bytes) {
+    StringBuilder sb = new StringBuilder(bytes.length * 2);
+    for (byte b : bytes) sb.append(String.format("%02x", b));
+    return sb.toString();
   }
 
   // -----------------------------------------------------------------------------------------
