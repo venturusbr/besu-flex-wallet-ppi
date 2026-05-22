@@ -29,8 +29,8 @@ public final class CliArgs {
   private final String[] nodes; // null -> use defaults
   private final Double maxRate; // null -> no throttling
   private final boolean generateKeys;
-  private final String dsaMode; // new field
-  
+  private final String dsaMode;
+
 
   private CliArgs(
       Integer txAmount, String outputPath, String[] nodes, Double maxRate, boolean generateKeys, String dsaMode) {
