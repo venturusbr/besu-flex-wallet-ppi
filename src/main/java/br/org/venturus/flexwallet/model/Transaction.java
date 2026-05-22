@@ -48,6 +48,15 @@ public class Transaction {
     }
   }
 
+  public long getChainId()                    { return chainId; }
+  public BigInteger getNonce()                { return nonce; }
+  public BigInteger getMaxPriorityFeePerGas() { return maxPriorityFeePerGas; }
+  public BigInteger getMaxFeePerGas()         { return maxFeePerGas; }
+  public BigInteger getGasLimit()             { return gasLimit; }
+  public String getTo()                       { return to; }
+  public BigInteger getValue()                { return value; }
+  public String getData()                     { return data; }
+
   public static class Builder {
     private Short dsaType;
     private long chainId;
@@ -179,7 +188,7 @@ public class Transaction {
     return result;
   }
 
-  private List<RlpType> rlpAccessList() {
+  public List<RlpType> rlpAccessList() {
     List<RlpType> rlpAccessList = new ArrayList<>();
     accessList.forEach(
         entry -> {

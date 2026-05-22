@@ -29,14 +29,17 @@ public final class CliArgs {
   private final String[] nodes; // null -> use defaults
   private final Double maxRate; // null -> no throttling
   private final boolean generateKeys;
+  private final String txType;
+
 
   private CliArgs(
-      Integer txAmount, String outputPath, String[] nodes, Double maxRate, boolean generateKeys) {
+      Integer txAmount, String outputPath, String[] nodes, Double maxRate, boolean generateKeys, String txType) {
     this.txAmount = txAmount;
     this.outputPath = outputPath;
     this.nodes = nodes;
     this.maxRate = maxRate;
     this.generateKeys = generateKeys;
+    this.txType = txType;
   }
 
   // --- Accessors ---------------------------------------------------------------------------
@@ -63,6 +66,11 @@ public final class CliArgs {
   /** Caller-supplied max TPS, or {@code null} for no throttling. */
   public Double maxRate() {
     return maxRate;
+  }
+
+  /** Returns the transaction type string, e.g. "EIP1559" or "FlexibleEIP1559". */
+  public String txType() {
+    return txType;
   }
 
   public boolean generateKeys() {
@@ -112,7 +120,7 @@ public final class CliArgs {
     }
 
     return new CliArgs(
-        txAmount, parseOutputPath(args), parseNodes(args), parseMaxRate(args), generateKeys);
+        txAmount, parseOutputPath(args), parseNodes(args), parseMaxRate(args), generateKeys, parseTxType(args));
   }
 
   // --- Individual flag parsers ------------------------------------------------------------
@@ -185,6 +193,20 @@ public final class CliArgs {
       }
     }
     return null;
+  }
+
+  private static String parseTxType(String[] args) {
+    for (int i = 0; i < args.length; i++) {
+      String lower = args[i].toLowerCase();
+      if (lower.equals("--txtype")) {
+        if (i + 1 >= args.length) throw new IllegalArgumentException("--txType requires a value (e.g. EIP1559 or FlexibleEIP1559)");
+        return args[i + 1];
+      }
+      if (lower.startsWith("--txtype=")) {
+        return args[i].substring("--txtype=".length());
+      }
+    }
+    throw new IllegalArgumentException("--txType is required (e.g. --txType EIP1559 or --txType FlexibleEIP1559)");
   }
 
   // --- Low-level helpers -------------------------------------------------------------------
