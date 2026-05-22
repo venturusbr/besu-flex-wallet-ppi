@@ -19,13 +19,13 @@ mvn clean install
 Send a single `FlexibleEIP1559` transaction to `http://localhost:8545`:
 
 ```sh
-mvn exec:java
+mvn exec:java -Dexec.args="--txType FlexibleEIP1559"
 ```
 
 Generate a fresh key pair, then send 100 `FlexibleEIP1559` transactions in parallel across the four default nodes (`localhost:8545`–`8548`):
 
 ```sh
-mvn exec:java -Dexec.args="--generateKeys --txAmount 100"
+mvn exec:java -Dexec.args="--generateKeys --txAmount 100 --txType FlexibleEIP1559"
 ```
 
 Show all flags and examples:
@@ -57,38 +57,38 @@ All flags are case-insensitive and accept either the `--flag value` or `--flag=v
 
 - **`--maxRate TPS`** — Upper bound on the batch submission rate, in transactions per second. Fractional values are allowed (`0.5` = one tx every 2 seconds). When omitted, the submission loop runs as fast as the worker pool can dispatch — which can flood a co-located Besu's tx pool faster than consensus can drain it. Pick a value that matches your block time × txs-per-block budget. Ignored in single-tx mode.
 
-- **`--dsaMode MODE`** — Transaction type to build. Either `EIP1559` (standard Ethereum, ECDSA signature) or `FlexibleEIP1559` (hybrid ECDSA + ML-DSA-44 signature). Defaults to `FlexibleEIP1559`.
+- **`--txType TYPE`** *(required)* — Transaction type to build. Either `EIP1559` (standard Ethereum, ECDSA signature) or `FlexibleEIP1559` (hybrid ECDSA + ML-DSA-44 signature).
 
 ## Examples
 
-Single transaction with default settings (`FlexibleEIP1559`, `localhost:8545`):
+Single `FlexibleEIP1559` transaction to `localhost:8545`:
 
 ```sh
-mvn exec:java
+mvn exec:java -Dexec.args="--txType FlexibleEIP1559"
 ```
 
 Generate fresh keys, then send 100 legacy `EIP1559` transactions across the 4 default nodes:
 
 ```sh
-mvn exec:java -Dexec.args="--generateKeys --txAmount 100 --dsaMode EIP1559"
+mvn exec:java -Dexec.args="--generateKeys --txAmount 100 --txType EIP1559"
 ```
 
 10,000 `FlexibleEIP1559` transactions with a custom CSV path:
 
 ```sh
-mvn exec:java -Dexec.args="--txAmount 10000 --output /tmp/run42.csv"
+mvn exec:java -Dexec.args="--txAmount 10000 --output /tmp/run42.csv --txType FlexibleEIP1559"
 ```
 
 1,000 `FlexibleEIP1559` transactions distributed across two specific nodes:
 
 ```sh
-mvn exec:java -Dexec.args="--txAmount 1000 --nodes http://node1:8545,http://node2:8545"
+mvn exec:java -Dexec.args="--txAmount 1000 --nodes http://node1:8545,http://node2:8545 --txType FlexibleEIP1559"
 ```
 
 10,000 `FlexibleEIP1559` transactions, capped at 20 TPS — gentle on a co-located QBFT node so the tx pool does not fill faster than consensus drains it:
 
 ```sh
-mvn exec:java -Dexec.args="--txAmount 10000 --maxRate 20"
+mvn exec:java -Dexec.args="--txAmount 10000 --maxRate 20 --txType FlexibleEIP1559"
 ```
 
 ## CSV output

@@ -29,17 +29,17 @@ public final class CliArgs {
   private final String[] nodes; // null -> use defaults
   private final Double maxRate; // null -> no throttling
   private final boolean generateKeys;
-  private final String dsaMode;
+  private final String txType;
 
 
   private CliArgs(
-      Integer txAmount, String outputPath, String[] nodes, Double maxRate, boolean generateKeys, String dsaMode) {
+      Integer txAmount, String outputPath, String[] nodes, Double maxRate, boolean generateKeys, String txType) {
     this.txAmount = txAmount;
     this.outputPath = outputPath;
     this.nodes = nodes;
     this.maxRate = maxRate;
     this.generateKeys = generateKeys;
-    this.dsaMode = dsaMode;
+    this.txType = txType;
   }
 
   // --- Accessors ---------------------------------------------------------------------------
@@ -68,9 +68,9 @@ public final class CliArgs {
     return maxRate;
   }
 
-  /** Returns the DSA mode string, e.g. "EIP1559" or "FlexibleEIP1559". Defaults to "FlexibleEIP1559". */
-  public String dsaMode() {
-    return dsaMode != null ? dsaMode : "FlexibleEIP1559";
+  /** Returns the transaction type string, e.g. "EIP1559" or "FlexibleEIP1559". */
+  public String txType() {
+    return txType;
   }
 
   public boolean generateKeys() {
@@ -120,7 +120,7 @@ public final class CliArgs {
     }
 
     return new CliArgs(
-        txAmount, parseOutputPath(args), parseNodes(args), parseMaxRate(args), generateKeys, parseDsaMode(args));
+        txAmount, parseOutputPath(args), parseNodes(args), parseMaxRate(args), generateKeys, parseTxType(args));
   }
 
   // --- Individual flag parsers ------------------------------------------------------------
@@ -195,18 +195,18 @@ public final class CliArgs {
     return null;
   }
 
-  private static String parseDsaMode(String[] args) {
+  private static String parseTxType(String[] args) {
     for (int i = 0; i < args.length; i++) {
       String lower = args[i].toLowerCase();
-      if (lower.equals("--dsamode")) {
-        if (i + 1 >= args.length) throw new IllegalArgumentException("--dsaMode requires a value (e.g. EIP1559 or FlexibleEIP1559)");
+      if (lower.equals("--txtype")) {
+        if (i + 1 >= args.length) throw new IllegalArgumentException("--txType requires a value (e.g. EIP1559 or FlexibleEIP1559)");
         return args[i + 1];
       }
-      if (lower.startsWith("--dsamode=")) {
-        return args[i].substring("--dsamode=".length());
+      if (lower.startsWith("--txtype=")) {
+        return args[i].substring("--txtype=".length());
       }
     }
-    return null;
+    throw new IllegalArgumentException("--txType is required (e.g. --txType EIP1559 or --txType FlexibleEIP1559)");
   }
 
   // --- Low-level helpers -------------------------------------------------------------------
