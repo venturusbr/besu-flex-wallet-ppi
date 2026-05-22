@@ -12,6 +12,7 @@ import org.bouncycastle.pqc.jcajce.provider.BouncyCastlePQCProvider;
 import org.web3j.utils.Convert;
 
 import br.org.venturus.flexwallet.batch.BatchRunner;
+import br.org.venturus.flexwallet.batch.KeyMaterial;
 import br.org.venturus.flexwallet.cli.CliArgs;
 import br.org.venturus.flexwallet.cli.Usage;
 import br.org.venturus.flexwallet.crypto.DigitalSignatureAlgorithm;
@@ -19,6 +20,7 @@ import br.org.venturus.flexwallet.crypto.MLDSA;
 import br.org.venturus.flexwallet.crypto.NestedHybridDSA;
 import br.org.venturus.flexwallet.crypto.Secp256k1;
 import br.org.venturus.flexwallet.crypto.key.types.CompositePrivateKey;
+import br.org.venturus.flexwallet.crypto.key.types.CompositePublicKey;
 import br.org.venturus.flexwallet.crypto.key.types.GenericPrivateKey;
 import br.org.venturus.flexwallet.crypto.key.types.NodeKeyPair;
 import br.org.venturus.flexwallet.model.Transaction;
@@ -73,13 +75,13 @@ public class App {
 
   private static void runLegacy(CliArgs cli) throws Exception {
     Secp256k1 secp256k1 = new Secp256k1();
-    LoadedKeys keys = loadOrGenerateLegacyKeys(cli.generateKeys(), secp256k1);
- 
     EIP1559Encoder encoder = new EIP1559Encoder(!cli.batchMode());
- 
+
     if (cli.batchMode()) {
-      new BatchRunner(cli, keys.pubBytes, keys.sk, encoder).run();
+      KeyMaterial[] keyMaterials = generateLegacyKeyMaterials(cli.txAmount(), secp256k1);
+      new BatchRunner(cli, keyMaterials, encoder).run();
     } else {
+      LoadedKeys keys = loadOrGenerateLegacyKeys(cli.generateKeys(), secp256k1);
       sendLegacyTransaction(encoder, keys, cli.singleEndpoint());
     }
   }
@@ -128,20 +130,45 @@ public class App {
   private static void runHybrid(CliArgs cli) throws Exception {
     DigitalSignatureAlgorithm signatureAlgorithm =
         new NestedHybridDSA(new Secp256k1(), new MLDSA());
- 
-    LoadedKeys keys = loadOrGenerateHybridKeys(cli.generateKeys(), signatureAlgorithm);
- 
-    if (!cli.batchMode()) {
-      printKeyLengths(keys);
-    }
- 
+
     FlexibleEIP1559Encoder encoder = new FlexibleEIP1559Encoder(signatureAlgorithm, !cli.batchMode());
- 
+
     if (cli.batchMode()) {
-      new BatchRunner(cli, keys.pubBytes, keys.sk, encoder).run();
+      KeyMaterial[] keyMaterials = generateHybridKeyMaterials(cli.txAmount(), signatureAlgorithm);
+      new BatchRunner(cli, keyMaterials, encoder).run();
     } else {
+      LoadedKeys keys = loadOrGenerateHybridKeys(cli.generateKeys(), signatureAlgorithm);
+      printKeyLengths(keys);
       sendHybridTransaction(encoder, keys, cli.singleEndpoint());
     }
+  }
+
+  private static KeyMaterial[] generateLegacyKeyMaterials(int n, Secp256k1 secp256k1) {
+    System.out.println("Generating " + n + " secp256k1 key pairs in memory...");
+    KeyMaterial[] materials = new KeyMaterial[n];
+    for (int i = 0; i < n; i++) {
+      NodeKeyPair kp = secp256k1.generateKeyPair();
+      materials[i] = new KeyMaterial(kp.getPublic().getEncoded(), kp.getPrivate());
+    }
+    System.out.println("Key generation complete.");
+    return materials;
+  }
+
+  private static KeyMaterial[] generateHybridKeyMaterials(int n, DigitalSignatureAlgorithm alg) {
+    System.out.println("Generating " + n + " hybrid (secp256k1+ML-DSA) key pairs in memory...");
+    KeyMaterial[] materials = new KeyMaterial[n];
+    for (int i = 0; i < n; i++) {
+      NodeKeyPair kp = alg.generateKeyPair();
+      // Second key is ML-DSA; its encoded public bytes go in the tx field.
+      // The composite private key (secp256k1 + ML-DSA) signs the transaction.
+      byte[] pubBytes = ((CompositePublicKey) kp.getPublic()).getSecondKey().getEncoded();
+      materials[i] = new KeyMaterial(pubBytes, kp.getPrivate());
+      if ((i + 1) % 500 == 0) {
+        System.out.println("  " + (i + 1) + "/" + n + " key pairs generated");
+      }
+    }
+    System.out.println("Key generation complete.");
+    return materials;
   }
  
   private static LoadedKeys loadOrGenerateHybridKeys(
