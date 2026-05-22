@@ -3,7 +3,6 @@ package br.org.venturus.flexwallet.batch;
 import java.math.BigInteger;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.security.PrivateKey;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -22,15 +21,15 @@ import org.web3j.utils.Convert;
 import br.org.venturus.flexwallet.cli.CliArgs;
 import br.org.venturus.flexwallet.model.Transaction;
 import br.org.venturus.flexwallet.model.encoder.EIP1559Encoder;
-import br.org.venturus.flexwallet.model.encoder.FlexibleEIP1559Encoder;
 import br.org.venturus.flexwallet.model.encoder.TransactionEncoder;
 import br.org.venturus.flexwallet.request.EthSendRawTransaction;
 
 /**
  * Orchestrates the parallel batch send: builds, signs, and POSTs {@code txAmount} transactions
- * across the configured endpoints round-robin by nonce, throttled by a {@link RateLimiter} if
- * one was configured, with a live {@link ProgressReporter} showing per-tick stats. Writes a CSV
- * of every outcome at the end and prints a console summary.
+ * across the configured endpoints round-robin by index, throttled by a {@link RateLimiter} if
+ * one was configured, with a live {@link ProgressReporter} showing per-tick stats. Each
+ * transaction is signed with its own {@link KeyMaterial}, so every sender address is unique.
+ * Writes a CSV of every outcome at the end and prints a console summary.
  */
 public final class BatchRunner {
 
@@ -45,8 +44,7 @@ public final class BatchRunner {
   private static final long POOL_SHUTDOWN_TIMEOUT_SECONDS = 120L;
 
   private final CliArgs cli;
-  private final byte[] pubBytes;
-  private final PrivateKey sk;
+  private final KeyMaterial[] keyMaterials;
   private final TransactionEncoder encoder;
 
   // Counters updated by workers, read by the ProgressReporter.
@@ -54,10 +52,9 @@ public final class BatchRunner {
   private final AtomicInteger succeeded = new AtomicInteger();
   private final AtomicInteger failed = new AtomicInteger();
 
-  public BatchRunner(CliArgs cli, byte[] pubBytes, PrivateKey sk, TransactionEncoder encoder) {
+  public BatchRunner(CliArgs cli, KeyMaterial[] keyMaterials, TransactionEncoder encoder) {
     this.cli = cli;
-    this.pubBytes = pubBytes;
-    this.sk = sk;
+    this.keyMaterials = keyMaterials;
     this.encoder = encoder;
   }
 
@@ -73,8 +70,6 @@ public final class BatchRunner {
 
     RateLimiter rateLimiter = cli.maxRate() != null ? new RateLimiter(cli.maxRate()) : null;
 
-    // Track wall-clock duration of the whole batch so the final summary can report a real
-    // elapsed time and average rate, not just the per-task elapsedMs values in the CSV.
     long startNanos = System.nanoTime();
 
     try (ProgressReporter reporter =
@@ -84,12 +79,12 @@ public final class BatchRunner {
           if (rateLimiter != null) {
             rateLimiter.acquire();
           }
-          final BigInteger nonce = BigInteger.valueOf(i);
+          final int txIndex = i;
           final String endpoint = endpoints[i % endpoints.length];
-          futures.add(pool.submit(() -> sendOne(nonce, endpoint)));
+          futures.add(pool.submit(() -> sendOne(txIndex, endpoint)));
         }
 
-        // Drain in submission (= nonce) order.
+        // Drain in submission order.
         for (Future<TxResult> future : futures) {
           try {
             results.add(future.get());
@@ -145,13 +140,14 @@ public final class BatchRunner {
   // Worker
   // -----------------------------------------------------------------------------------------
 
-  private TxResult sendOne(BigInteger nonce, String endpoint) {
+  private TxResult sendOne(int txIndex, String endpoint) {
+    KeyMaterial km = keyMaterials[txIndex];
     Instant timestamp = Instant.now();
     long startNs = System.nanoTime();
     TxResult result;
     try {
-      Transaction unsigned = buildTransaction(nonce);
-      byte[] raw = encoder.createRawTransaction(unsigned, sk);
+      Transaction unsigned = buildTransaction(km);
+      byte[] raw = encoder.createRawTransaction(unsigned, km.sk);
       String tx = "0x" + bytesToHex(raw);
 
       String response = EthSendRawTransaction.send(tx, endpoint, false);
@@ -160,17 +156,25 @@ public final class BatchRunner {
       if (JsonRpcResponses.isError(response)) {
         result =
             TxResult.failure(
-                nonce, endpoint, JsonRpcResponses.extractErrorMessage(response), elapsedMs, timestamp);
+                BigInteger.valueOf(txIndex),
+                endpoint,
+                JsonRpcResponses.extractErrorMessage(response),
+                elapsedMs,
+                timestamp);
       } else {
         result =
             TxResult.success(
-                nonce, endpoint, JsonRpcResponses.extractResult(response), elapsedMs, timestamp);
+                BigInteger.valueOf(txIndex),
+                endpoint,
+                JsonRpcResponses.extractResult(response),
+                elapsedMs,
+                timestamp);
       }
     } catch (Exception e) {
       long elapsedMs = (System.nanoTime() - startNs) / 1_000_000L;
       result =
           TxResult.failure(
-              nonce,
+              BigInteger.valueOf(txIndex),
               endpoint,
               e.getClass().getSimpleName()
                   + (e.getMessage() == null ? "" : ": " + e.getMessage()),
@@ -178,7 +182,6 @@ public final class BatchRunner {
               timestamp);
     }
 
-    // Update live counters before returning so ProgressReporter sees progress.
     if (result.success()) {
       succeeded.incrementAndGet();
     } else {
@@ -188,24 +191,24 @@ public final class BatchRunner {
     return result;
   }
 
- private Transaction buildTransaction(BigInteger nonce) {
+  private Transaction buildTransaction(KeyMaterial km) {
     boolean isLegacy = encoder instanceof EIP1559Encoder;
- 
+
     Transaction.Builder builder = new Transaction.Builder()
         .chainId(381660666L)
-        .nonce(nonce)
+        .nonce(BigInteger.ZERO) // each KeyMaterial is a fresh account; nonce always starts at 0
         .to("0xf17f52151EbEF6C7334FAD080c5704D77216b732")
         .value(Convert.toWei("0", Convert.Unit.ETHER).toBigInteger())
         .data("")
         .gasLimit(BigInteger.valueOf(1_000_000))
         .maxPriorityFeePerGas(BigInteger.ZERO)
         .maxFeePerGas(BigInteger.ZERO);
- 
+
     if (!isLegacy) {
       // Flexible/PQC transactions carry dsaType and publicKey
-      builder.dsaType((short) 0x0060).publicKey(pubBytes);
+      builder.dsaType((short) 0x0060).publicKey(km.pubBytes);
     }
- 
+
     return builder.build();
   }
 
