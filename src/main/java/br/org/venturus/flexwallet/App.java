@@ -51,7 +51,7 @@ public class App {
 
       registerPqcProvider();
 
-      boolean isLegacyMode = MODE_LEGACY.equalsIgnoreCase(cli.dsaMode()); // CLI flag --dsa-mode=EIP1559
+      boolean isLegacyMode = MODE_LEGACY.equalsIgnoreCase(cli.dsaMode()); // CLI flag --dsaMode EIP1559
 
       if (isLegacyMode) {
         runLegacy(cli);

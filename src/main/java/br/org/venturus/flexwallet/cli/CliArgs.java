@@ -198,12 +198,12 @@ public final class CliArgs {
   private static String parseDsaMode(String[] args) {
     for (int i = 0; i < args.length; i++) {
       String lower = args[i].toLowerCase();
-      if (lower.equals("--dsa-mode")) {
-        if (i + 1 >= args.length) throw new IllegalArgumentException("--dsa-mode requires a value (e.g. EIP1559 or FlexibleEIP1559)");
+      if (lower.equals("--dsamode")) {
+        if (i + 1 >= args.length) throw new IllegalArgumentException("--dsaMode requires a value (e.g. EIP1559 or FlexibleEIP1559)");
         return args[i + 1];
       }
-      if (lower.startsWith("--dsa-mode=")) {
-        return args[i].substring("--dsa-mode=".length());
+      if (lower.startsWith("--dsamode=")) {
+        return args[i].substring("--dsamode=".length());
       }
     }
     return null;
