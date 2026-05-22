@@ -34,9 +34,9 @@ import br.org.venturus.flexwallet.utils.FileUtils;
  * key material, and dispatches to either the original single-tx path or the {@link BatchRunner}.
  */
 public class App {
-  // DSA mode constants — extend as needed
-  private static final String MODE_HYBRID = "FlexibleEIP1559";  // default
-  private static final String MODE_LEGACY = "EIP1559";          // standard secp256k1 only
+  // Tx type constants — extend as needed
+  private static final String TX_HYBRID = "FlexibleEIP1559";  // hybrid secp256k1+mldsa44
+  private static final String TX_LEGACY = "EIP1559";          // standard secp256k1 only
 
   public static void main(String[] args) {
     // --help short-circuits all setup so that calling it on a misconfigured environment
@@ -51,7 +51,7 @@ public class App {
 
       registerPqcProvider();
 
-      boolean isLegacyMode = MODE_LEGACY.equalsIgnoreCase(cli.txType()); // CLI flag --txType EIP1559
+      boolean isLegacyMode = TX_LEGACY.equalsIgnoreCase(cli.txType()); // CLI flag --txType EIP1559
 
       if (isLegacyMode) {
         runLegacy(cli);
