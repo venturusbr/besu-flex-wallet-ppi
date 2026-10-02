@@ -16,8 +16,7 @@ import br.org.venturus.flexwallet.batch.KeyMaterial;
 import br.org.venturus.flexwallet.cli.CliArgs;
 import br.org.venturus.flexwallet.cli.Usage;
 import br.org.venturus.flexwallet.crypto.DigitalSignatureAlgorithm;
-import br.org.venturus.flexwallet.crypto.MLDSA;
-import br.org.venturus.flexwallet.crypto.NestedHybridDSA;
+import br.org.venturus.flexwallet.crypto.HybridDsa;
 import br.org.venturus.flexwallet.crypto.Secp256k1;
 import br.org.venturus.flexwallet.crypto.key.types.CompositePrivateKey;
 import br.org.venturus.flexwallet.crypto.key.types.CompositePublicKey;
@@ -35,7 +34,7 @@ import br.org.venturus.flexwallet.utils.FileUtils;
  */
 public class App {
   // Tx type constants — extend as needed
-  private static final String TX_HYBRID = "FlexibleEIP1559";  // hybrid secp256k1+mldsa44
+  private static final String TX_HYBRID = "FlexibleEIP1559";  // hybrid, see --hybridDsa
   private static final String TX_LEGACY = "EIP1559";          // standard secp256k1 only
 
   public static void main(String[] args) {
@@ -124,22 +123,24 @@ public class App {
   }
 
   // -----------------------------------------------------------------------------------------
-  // Hybrid SECP256K1-MLDSA44 (PQC, existing path)
+  // Hybrid SECP256K1 + PQC (ML-DSA-44 or Falcon-512, chosen by --hybridDsa)
   // -----------------------------------------------------------------------------------------
 
   private static void runHybrid(CliArgs cli) throws Exception {
-    DigitalSignatureAlgorithm signatureAlgorithm =
-        new NestedHybridDSA(new Secp256k1(), new MLDSA());
+    HybridDsa hybridDsa = cli.hybridDsa();
+    DigitalSignatureAlgorithm signatureAlgorithm = hybridDsa.createAlgorithm();
+    System.out.println("Hybrid DSA: " + hybridDsa.cliName()
+        + String.format(" (dsaType 0x%04x)", hybridDsa.dsaType()));
 
     FlexibleEIP1559Encoder encoder = new FlexibleEIP1559Encoder(signatureAlgorithm, !cli.batchMode());
 
     if (cli.batchMode()) {
-      KeyMaterial[] keyMaterials = generateHybridKeyMaterials(cli.txAmount(), signatureAlgorithm);
+      KeyMaterial[] keyMaterials = generateHybridKeyMaterials(cli.txAmount(), hybridDsa, signatureAlgorithm);
       new BatchRunner(cli, keyMaterials, encoder).run();
     } else {
-      LoadedKeys keys = loadOrGenerateHybridKeys(cli.generateKeys(), signatureAlgorithm);
+      LoadedKeys keys = loadOrGenerateHybridKeys(cli.generateKeys(), hybridDsa, signatureAlgorithm);
       printKeyLengths(keys);
-      sendHybridTransaction(encoder, keys, cli.singleEndpoint());
+      sendHybridTransaction(encoder, hybridDsa, keys, cli.singleEndpoint());
     }
   }
 
@@ -154,13 +155,15 @@ public class App {
     return materials;
   }
 
-  private static KeyMaterial[] generateHybridKeyMaterials(int n, DigitalSignatureAlgorithm alg) {
-    System.out.println("Generating " + n + " hybrid (secp256k1+ML-DSA) key pairs in memory...");
+  private static KeyMaterial[] generateHybridKeyMaterials(
+      int n, HybridDsa hybridDsa, DigitalSignatureAlgorithm alg) {
+    System.out.println(
+        "Generating " + n + " hybrid (" + hybridDsa.cliName() + ") key pairs in memory...");
     KeyMaterial[] materials = new KeyMaterial[n];
     for (int i = 0; i < n; i++) {
       NodeKeyPair kp = alg.generateKeyPair();
-      // Second key is ML-DSA; its encoded public bytes go in the tx field.
-      // The composite private key (secp256k1 + ML-DSA) signs the transaction.
+      // Second key is the PQC one; its encoded public bytes go in the tx field.
+      // The composite private key (secp256k1 + PQC) signs the transaction.
       byte[] pubBytes = ((CompositePublicKey) kp.getPublic()).getSecondKey().getEncoded();
       materials[i] = new KeyMaterial(pubBytes, kp.getPrivate());
       if ((i + 1) % 500 == 0) {
@@ -172,7 +175,8 @@ public class App {
   }
 
   private static LoadedKeys loadOrGenerateHybridKeys(
-      boolean forceRegenerate, DigitalSignatureAlgorithm signatureAlgorithm) throws Exception {
+      boolean forceRegenerate, HybridDsa hybridDsa, DigitalSignatureAlgorithm signatureAlgorithm)
+      throws Exception {
     FileUtils fileUtils = new FileUtils();
     Path keyFile = fileUtils.getFilePath();
 
@@ -194,6 +198,13 @@ public class App {
     byte[] secondPubBytes  = Base64.getDecoder().decode(keys[2]);
     byte[] secondPrivBytes = Base64.getDecoder().decode(keys[3]);
 
+    if (secondPubBytes.length != hybridDsa.pqcPublicKeyLength()) {
+      throw new IllegalStateException(
+          "Key file " + keyFile + " holds a " + secondPubBytes.length + "-byte PQC public key, but "
+              + hybridDsa.cliName() + " expects " + hybridDsa.pqcPublicKeyLength()
+              + " bytes. It was likely generated for another --hybridDsa; rerun with --generateKeys.");
+    }
+
     pubBytes = secondPubBytes;
     sk = CompositePrivateKey.create(
         new GenericPrivateKey(Bytes.wrap(privBytes)),
@@ -203,10 +214,11 @@ public class App {
   }
 
   private static void sendHybridTransaction(
-      FlexibleEIP1559Encoder encoder, LoadedKeys keys, String endpoint) throws Exception {
+      FlexibleEIP1559Encoder encoder, HybridDsa hybridDsa, LoadedKeys keys, String endpoint)
+      throws Exception {
     Transaction unsignedTransaction =
         new Transaction.Builder()
-            .dsaType((short) 0x0060)
+            .dsaType(hybridDsa.dsaType())
             .chainId(381660666L)
             .nonce(BigInteger.ZERO)
             .to("0xf17f52151EbEF6C7334FAD080c5704D77216b732")

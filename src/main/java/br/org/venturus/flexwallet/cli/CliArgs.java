@@ -3,6 +3,7 @@ package br.org.venturus.flexwallet.cli;
 import java.util.ArrayList;
 import java.util.List;
 
+import br.org.venturus.flexwallet.crypto.HybridDsa;
 import br.org.venturus.flexwallet.request.EthSendRawTransaction;
 
 /**
@@ -30,16 +31,18 @@ public final class CliArgs {
   private final Double maxRate; // null -> no throttling
   private final boolean generateKeys;
   private final String txType;
-
+  private final HybridDsa hybridDsa;
 
   private CliArgs(
-      Integer txAmount, String outputPath, String[] nodes, Double maxRate, boolean generateKeys, String txType) {
+      Integer txAmount, String outputPath, String[] nodes, Double maxRate, boolean generateKeys, String txType,
+      HybridDsa hybridDsa) {
     this.txAmount = txAmount;
     this.outputPath = outputPath;
     this.nodes = nodes;
     this.maxRate = maxRate;
     this.generateKeys = generateKeys;
     this.txType = txType;
+    this.hybridDsa = hybridDsa;
   }
 
   // --- Accessors ---------------------------------------------------------------------------
@@ -71,6 +74,11 @@ public final class CliArgs {
   /** Returns the transaction type string, e.g. "EIP1559" or "FlexibleEIP1559". */
   public String txType() {
     return txType;
+  }
+
+  /** Hybrid DSA used for FlexibleEIP1559 transactions; {@link HybridDsa#DEFAULT} if omitted. */
+  public HybridDsa hybridDsa() {
+    return hybridDsa;
   }
 
   public boolean generateKeys() {
@@ -120,7 +128,8 @@ public final class CliArgs {
     }
 
     return new CliArgs(
-        txAmount, parseOutputPath(args), parseNodes(args), parseMaxRate(args), generateKeys, parseTxType(args));
+        txAmount, parseOutputPath(args), parseNodes(args), parseMaxRate(args), generateKeys, parseTxType(args),
+        parseHybridDsa(args));
   }
 
   // --- Individual flag parsers ------------------------------------------------------------
@@ -207,6 +216,23 @@ public final class CliArgs {
       }
     }
     throw new IllegalArgumentException("--txType is required (e.g. --txType EIP1559 or --txType FlexibleEIP1559)");
+  }
+
+  private static HybridDsa parseHybridDsa(String[] args) {
+    for (int i = 0; i < args.length; i++) {
+      String lower = args[i].toLowerCase();
+      if (lower.equals("--hybriddsa")) {
+        if (i + 1 >= args.length) {
+          throw new IllegalArgumentException(
+              "--hybridDsa requires a value (one of " + HybridDsa.cliNames() + ")");
+        }
+        return HybridDsa.fromCliName(args[i + 1]);
+      }
+      if (lower.startsWith("--hybriddsa=")) {
+        return HybridDsa.fromCliName(args[i].substring("--hybriddsa=".length()));
+      }
+    }
+    return HybridDsa.DEFAULT;
   }
 
   // --- Low-level helpers -------------------------------------------------------------------

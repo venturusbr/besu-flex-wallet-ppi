@@ -1,6 +1,6 @@
 # besu-flex-wallet-ppi
 
-A minimal Java CLI wallet that signs and submits transactions to a (modified) Besu network. Built to test the DSA-agnostic transaction protocol — sending `FlexibleEIP1559` transactions signed with hybrid post-quantum schemes (ECDSA/secp256k1 + ML-DSA-44 via Strong Nesting Concatenation) — and also capable of producing plain `EIP1559` transactions for comparison against stock Besu.
+A minimal Java CLI wallet that signs and submits transactions to a (modified) Besu network. Built to test the DSA-agnostic transaction protocol — sending `FlexibleEIP1559` transactions signed with hybrid post-quantum schemes (ECDSA/secp256k1 + ML-DSA-44 or Falcon-512 via Strong Nesting Concatenation) — and also capable of producing plain `EIP1559` transactions for comparison against stock Besu.
 
 ## Requirements
 
@@ -57,7 +57,13 @@ All flags are case-insensitive and accept either the `--flag value` or `--flag=v
 
 - **`--maxRate TPS`** — Upper bound on the batch submission rate, in transactions per second. Fractional values are allowed (`0.5` = one tx every 2 seconds). When omitted, the submission loop runs as fast as the worker pool can dispatch — which can flood a co-located Besu's tx pool faster than consensus can drain it. Pick a value that matches your block time × txs-per-block budget. Ignored in single-tx mode.
 
-- **`--txType TYPE`** *(required)* — Transaction type to build. Either `EIP1559` (standard Ethereum, ECDSA signature) or `FlexibleEIP1559` (hybrid ECDSA + ML-DSA-44 signature).
+- **`--txType TYPE`** *(required)* — Transaction type to build. Either `EIP1559` (standard Ethereum, ECDSA signature) or `FlexibleEIP1559` (hybrid signature, see `--hybridDsa`).
+
+- **`--hybridDsa NAME`** — Hybrid signature scheme for `FlexibleEIP1559` transactions. Ignored for `EIP1559`.
+  - `SECP256K1-MLDSA44` *(default)* — secp256k1 + ML-DSA-44, `dsaType` `0x0060`.
+  - `SECP256K1-FALCON512` — secp256k1 + Falcon-512, `dsaType` `0x0070`.
+
+  In both cases secp256k1 signs the digest first and the PQC algorithm signs `digest || secp256k1Signature`. The transaction carries only the PQC public key, because Besu recovers the secp256k1 key from its signature. Falcon signatures are variable-length (~650–670 bytes). The single-tx key file holds one hybrid key pair, so pass `--generateKeys` when switching schemes. The wallet refuses to sign with a key file generated for the other scheme.
 
 ## Examples
 
@@ -77,6 +83,12 @@ mvn exec:java -Dexec.args="--generateKeys --txAmount 100 --txType EIP1559"
 
 ```sh
 mvn exec:java -Dexec.args="--txAmount 10000 --output /tmp/run42.csv --txType FlexibleEIP1559"
+```
+
+Generate fresh keys, then send a single `FlexibleEIP1559` transaction signed with secp256k1 + Falcon-512:
+
+```sh
+mvn exec:java -Dexec.args="--generateKeys --txType FlexibleEIP1559 --hybridDsa SECP256K1-FALCON512"
 ```
 
 1,000 `FlexibleEIP1559` transactions distributed across two specific nodes:
