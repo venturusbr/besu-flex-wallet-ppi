@@ -206,7 +206,7 @@ public final class BatchRunner {
 
     if (!isLegacy) {
       // Flexible/PQC transactions carry dsaType and publicKey
-      builder.dsaType((short) 0x0060).publicKey(km.pubBytes);
+      builder.dsaType(cli.hybridDsa().dsaType()).publicKey(km.pubBytes);
     }
 
     return builder.build();
