@@ -1,6 +1,6 @@
 # besu-flex-wallet-ppi
 
-A minimal Java CLI wallet that signs and submits transactions to a (modified) Besu network. Built to test the DSA-agnostic transaction protocol — sending `FlexibleEIP1559` transactions signed with hybrid post-quantum schemes (ECDSA/secp256k1 + ML-DSA-44 or Falcon-512 via Strong Nesting Concatenation) — and also capable of producing plain `EIP1559` transactions for comparison against stock Besu.
+A minimal Java CLI wallet that signs and submits transactions to a (modified) Besu network. Built to test the DSA-agnostic transaction protocol — sending `FlexibleEIP1559` transactions signed with hybrid post-quantum schemes (ECDSA/secp256k1 + ML-DSA-44 or Falcon-512 via Strong Nesting Concatenation) — and also capable of producing plain `EIP1559` transactions (on secp256k1 or secp256r1, see `--ecCurve`) for comparison against stock Besu.
 
 ## Requirements
 
@@ -65,6 +65,12 @@ All flags are case-insensitive and accept either the `--flag value` or `--flag=v
 
   In both cases secp256k1 signs the digest first and the PQC algorithm signs `digest || secp256k1Signature`. The transaction carries only the PQC public key, because Besu recovers the secp256k1 key from its signature. Falcon signatures are variable-length (~650–670 bytes). The single-tx key file holds one hybrid key pair, so pass `--generateKeys` when switching schemes. The wallet refuses to sign with a key file generated for the other scheme.
 
+- **`--ecCurve NAME`** — Curve that signs `EIP1559` transactions. Ignored for `FlexibleEIP1559`.
+  - `secp256k1` *(default)* — stock Ethereum.
+  - `secp256r1` — for networks whose genesis sets `"ecCurve": "secp256r1"`, such as besu-qbft's `init-qbft.sh --node-dsa=SECP256R1`.
+
+  It must match the network's genesis `ecCurve`. Besu recovers the sender of an `EIP1559` transaction on that curve. A signature made on the other curve is either rejected (`Cannot recover public key`) or, worse, accepted from a meaningless sender address. The single-tx key file holds one key pair, so pass `--generateKeys` when switching curves. The wallet refuses to sign with a key file generated for another curve. In single-tx mode the wallet prints the sender address.
+
 ## Examples
 
 Single `FlexibleEIP1559` transaction to `localhost:8545`:
@@ -77,6 +83,12 @@ Generate fresh keys, then send 100 legacy `EIP1559` transactions across the 4 de
 
 ```sh
 mvn exec:java -Dexec.args="--generateKeys --txAmount 100 --txType EIP1559"
+```
+
+1,000 `EIP1559` transactions to a secp256r1 network (besu-qbft `init-qbft.sh --node-dsa=SECP256R1`):
+
+```sh
+mvn exec:java -Dexec.args="--txAmount 1000 --txType EIP1559 --ecCurve secp256r1"
 ```
 
 10,000 `FlexibleEIP1559` transactions with a custom CSV path:

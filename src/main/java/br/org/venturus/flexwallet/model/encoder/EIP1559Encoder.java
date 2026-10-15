@@ -1,5 +1,6 @@
 package br.org.venturus.flexwallet.model.encoder;
 
+import br.org.venturus.flexwallet.crypto.AbstractSecp256;
 import br.org.venturus.flexwallet.crypto.Secp256k1;
 import br.org.venturus.flexwallet.model.Transaction;
 import org.bouncycastle.jcajce.provider.digest.Keccak;
@@ -29,10 +30,13 @@ import java.util.Optional;
  *
  * This is used for benchmarking the unmodified Besu baseline, so that
  * throughput and latency metrics can be compared against the PQC variants.
+ *
+ * The signing curve must be the network's genesis ecCurve (secp256k1 unless
+ * configured otherwise), since Besu recovers the sender on that curve.
  */
 public class EIP1559Encoder extends TransactionEncoder {
 
-    private final Secp256k1 secp256k1;
+    private final AbstractSecp256 ecdsa;
     private final boolean verbose;
 
     public EIP1559Encoder() {
@@ -40,7 +44,11 @@ public class EIP1559Encoder extends TransactionEncoder {
     }
 
     public EIP1559Encoder(boolean verbose) {
-        this.secp256k1 = new Secp256k1();
+        this(new Secp256k1(), verbose);
+    }
+
+    public EIP1559Encoder(AbstractSecp256 ecdsa, boolean verbose) {
+        this.ecdsa = ecdsa;
         this.verbose = verbose;
     }
 
@@ -65,7 +73,7 @@ public class EIP1559Encoder extends TransactionEncoder {
     public byte[] createRawTransaction(Transaction unsignedTx, PrivateKey sk) {
         byte[] digest = createDigest(unsignedTx);
 
-        byte[] signature = secp256k1.sign(digest, sk);
+        byte[] signature = ecdsa.sign(digest, sk);
 
         if (verbose) {
             System.out.println("~~~~~~~~~~~~~~~~~~~ Signature length ~~~~~~~~~~~~~~~~~~~~~~~~~~~");
@@ -118,7 +126,7 @@ public class EIP1559Encoder extends TransactionEncoder {
         signature.ifPresent(sig -> {
             if (sig.length != 65) {
                 throw new IllegalArgumentException(
-                    "Expected 65-byte secp256k1 signature, got " + sig.length);
+                    "Expected 65-byte ECDSA signature, got " + sig.length);
             }
             byte[] r = Arrays.copyOfRange(sig,  0, 32);
             byte[] s = Arrays.copyOfRange(sig, 32, 64);

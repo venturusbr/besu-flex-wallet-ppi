@@ -5,6 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.PrivateKey;
 import java.security.Security;
+import java.util.Arrays;
 import java.util.Base64;
 
 import org.apache.tuweni.bytes.Bytes;
@@ -15,9 +16,9 @@ import br.org.venturus.flexwallet.batch.BatchRunner;
 import br.org.venturus.flexwallet.batch.KeyMaterial;
 import br.org.venturus.flexwallet.cli.CliArgs;
 import br.org.venturus.flexwallet.cli.Usage;
+import br.org.venturus.flexwallet.crypto.AbstractSecp256;
 import br.org.venturus.flexwallet.crypto.DigitalSignatureAlgorithm;
 import br.org.venturus.flexwallet.crypto.HybridDsa;
-import br.org.venturus.flexwallet.crypto.Secp256k1;
 import br.org.venturus.flexwallet.crypto.key.types.CompositePrivateKey;
 import br.org.venturus.flexwallet.crypto.key.types.CompositePublicKey;
 import br.org.venturus.flexwallet.crypto.key.types.GenericPrivateKey;
@@ -35,7 +36,7 @@ import br.org.venturus.flexwallet.utils.FileUtils;
 public class App {
   // Tx type constants — extend as needed
   private static final String TX_HYBRID = "FlexibleEIP1559";  // hybrid, see --hybridDsa
-  private static final String TX_LEGACY = "EIP1559";          // standard secp256k1 only
+  private static final String TX_LEGACY = "EIP1559";          // plain ECDSA, see --ecCurve
 
   public static void main(String[] args) {
     // --help short-circuits all setup so that calling it on a misconfigured environment
@@ -73,32 +74,43 @@ public class App {
   }
 
   private static void runLegacy(CliArgs cli) throws Exception {
-    Secp256k1 secp256k1 = new Secp256k1();
-    EIP1559Encoder encoder = new EIP1559Encoder(!cli.batchMode());
+    AbstractSecp256 ecdsa = cli.ecCurve().createAlgorithm();
+    System.out.println("EIP1559 signing curve: " + ecdsa.curveName());
+    EIP1559Encoder encoder = new EIP1559Encoder(ecdsa, !cli.batchMode());
 
     if (cli.batchMode()) {
-      KeyMaterial[] keyMaterials = generateLegacyKeyMaterials(cli.txAmount(), secp256k1);
+      KeyMaterial[] keyMaterials = generateLegacyKeyMaterials(cli.txAmount(), ecdsa);
       new BatchRunner(cli, keyMaterials, encoder).run();
     } else {
-      LoadedKeys keys = loadOrGenerateLegacyKeys(cli.generateKeys(), secp256k1);
+      LoadedKeys keys = loadOrGenerateLegacyKeys(cli.generateKeys(), ecdsa);
+      System.out.println("Sender address: " + AbstractSecp256.address(keys.pubBytes));
       sendLegacyTransaction(encoder, keys, cli.singleEndpoint());
     }
   }
   private static LoadedKeys loadOrGenerateLegacyKeys(
-      boolean forceRegenerate, Secp256k1 secp256k1) throws Exception {
+      boolean forceRegenerate, AbstractSecp256 ecdsa) throws Exception {
     FileUtils fileUtils = new FileUtils();
     Path keyFile = fileUtils.getFilePath();
 
     if (forceRegenerate || !Files.exists(keyFile)) {
-      NodeKeyPair keyPair = secp256k1.generateKeyPair();
+      NodeKeyPair keyPair = ecdsa.generateKeyPair();
       fileUtils.writeKeys(keyPair);
-      System.out.println("Generated new secp256k1 keys. File Path: " + keyFile);
+      System.out.println("Generated new " + ecdsa.curveName() + " keys. File Path: " + keyFile);
     }
 
     String[] keys = fileUtils.readKeys();
     byte[] pubBytes  = Base64.getDecoder().decode(keys[0]);
     byte[] privBytes = Base64.getDecoder().decode(keys[1]);
     PrivateKey sk = new GenericPrivateKey(Bytes.wrap(privBytes));
+
+    // The same 32-byte scalar is a valid key on either curve, but with another public key and
+    // address, so a key file generated for another curve (or a hybrid DSA) must not be reused.
+    if (keys.length != 2 || !Arrays.equals(pubBytes, ecdsa.publicKeyOf(sk))) {
+      throw new IllegalStateException(
+          "Key file " + keyFile + " does not hold a " + ecdsa.curveName()
+              + " key pair. It was likely generated for another --ecCurve or for"
+              + " FlexibleEIP1559; rerun with --generateKeys.");
+    }
     return new LoadedKeys(pubBytes, sk);
   }
 
@@ -144,11 +156,11 @@ public class App {
     }
   }
 
-  private static KeyMaterial[] generateLegacyKeyMaterials(int n, Secp256k1 secp256k1) {
-    System.out.println("Generating " + n + " secp256k1 key pairs in memory...");
+  private static KeyMaterial[] generateLegacyKeyMaterials(int n, AbstractSecp256 ecdsa) {
+    System.out.println("Generating " + n + " " + ecdsa.curveName() + " key pairs in memory...");
     KeyMaterial[] materials = new KeyMaterial[n];
     for (int i = 0; i < n; i++) {
-      NodeKeyPair kp = secp256k1.generateKeyPair();
+      NodeKeyPair kp = ecdsa.generateKeyPair();
       materials[i] = new KeyMaterial(kp.getPublic().getEncoded(), kp.getPrivate());
     }
     System.out.println("Key generation complete.");
