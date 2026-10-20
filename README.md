@@ -69,7 +69,7 @@ All flags are case-insensitive and accept either the `--flag value` or `--flag=v
   - `secp256k1` *(default)* — stock Ethereum.
   - `secp256r1` — for networks whose genesis sets `"ecCurve": "secp256r1"`, such as besu-qbft's `init-qbft.sh --node-dsa=SECP256R1`.
 
-  It must match the network's genesis `ecCurve`. Besu recovers the sender of an `EIP1559` transaction on that curve. A signature made on the other curve is either rejected (`Cannot recover public key`) or, worse, accepted from a meaningless sender address. The single-tx key file holds one key pair, so pass `--generateKeys` when switching curves. The wallet refuses to sign with a key file generated for another curve. In single-tx mode the wallet prints the sender address.
+  It must match the network's genesis `ecCurve`. Besu recovers the sender of an `EIP1559` transaction on that curve. A signature made on the other curve is either rejected with the JSON-RPC error `-32002 Invalid signature` (counted as a failed transaction) or, worse, accepted from a meaningless sender address. The single-tx key file holds one key pair, so pass `--generateKeys` when switching curves. The wallet refuses to sign with a key file generated for another curve. In single-tx mode the wallet prints the sender address.
 
 ## Examples
 
