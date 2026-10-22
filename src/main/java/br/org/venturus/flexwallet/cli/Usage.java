@@ -9,7 +9,7 @@ public final class Usage {
   /** Print the usage block to stdout. Called when --help / -h is detected. */
   public static void print() {
     StringBuilder sb = new StringBuilder();
-    sb.append("Flexwallet — sign EIP-1559-style transactions and POST them to JSON-RPC nodes.\n")
+    sb.append("Flexwallet - sign EIP-1559-style transactions and POST them to JSON-RPC nodes.\n")
         .append('\n')
         .append("USAGE\n")
         .append("  mvn exec:java -Dexec.args=\"--txType <TYPE> [OPTIONS]\"\n")
@@ -48,10 +48,10 @@ public final class Usage {
         .append("                          transactions per second (fractional values\n")
         .append("                          allowed, e.g. 0.5 = 1 tx every 2s). When the flag\n")
         .append("                          is omitted, the submission loop runs as fast as\n")
-        .append("                          the worker pool can dispatch — which can flood a\n")
+        .append("                          the worker pool can dispatch - which can flood a\n")
         .append("                          co-located Besu's tx pool faster than consensus\n")
         .append("                          drains it. Pick a value that matches your block\n")
-        .append("                          time × txs-per-block budget. Ignored in single-tx\n")
+        .append("                          time x txs-per-block budget. Ignored in single-tx\n")
         .append("                          mode.\n")
         .append('\n')
         .append("  --txType TYPE           Type of transaction, \"EIP1559\" or \"FlexibleEIP1559\".\n")
@@ -91,7 +91,7 @@ public final class Usage {
         .append("    mvn exec:java -Dexec.args=\"--txAmount 1000 \\\n")
         .append("      --nodes http://node1:8545,http://node2:8545 --txType FlexibleEIP1559\"\n")
         .append('\n')
-        .append("  10k tx, capped at 20 TPS — gentle on a co-located qbft node:\n")
+        .append("  10k tx, capped at 20 TPS - gentle on a co-located qbft node:\n")
         .append("    mvn exec:java -Dexec.args=\"--txAmount 10000 --maxRate 20 --txType FlexibleEIP1559\"\n")
         .append('\n')
         .append("  Show this help:\n")
