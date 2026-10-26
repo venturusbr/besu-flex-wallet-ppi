@@ -3,6 +3,7 @@ package br.org.venturus.flexwallet.cli;
 import java.util.ArrayList;
 import java.util.List;
 
+import br.org.venturus.flexwallet.crypto.EcCurve;
 import br.org.venturus.flexwallet.crypto.HybridDsa;
 import br.org.venturus.flexwallet.request.EthSendRawTransaction;
 
@@ -32,10 +33,11 @@ public final class CliArgs {
   private final boolean generateKeys;
   private final String txType;
   private final HybridDsa hybridDsa;
+  private final EcCurve ecCurve;
 
   private CliArgs(
       Integer txAmount, String outputPath, String[] nodes, Double maxRate, boolean generateKeys, String txType,
-      HybridDsa hybridDsa) {
+      HybridDsa hybridDsa, EcCurve ecCurve) {
     this.txAmount = txAmount;
     this.outputPath = outputPath;
     this.nodes = nodes;
@@ -43,6 +45,7 @@ public final class CliArgs {
     this.generateKeys = generateKeys;
     this.txType = txType;
     this.hybridDsa = hybridDsa;
+    this.ecCurve = ecCurve;
   }
 
   // --- Accessors ---------------------------------------------------------------------------
@@ -79,6 +82,11 @@ public final class CliArgs {
   /** Hybrid DSA used for FlexibleEIP1559 transactions; {@link HybridDsa#DEFAULT} if omitted. */
   public HybridDsa hybridDsa() {
     return hybridDsa;
+  }
+
+  /** Curve that signs EIP1559 transactions; {@link EcCurve#DEFAULT} if omitted. */
+  public EcCurve ecCurve() {
+    return ecCurve;
   }
 
   public boolean generateKeys() {
@@ -129,7 +137,7 @@ public final class CliArgs {
 
     return new CliArgs(
         txAmount, parseOutputPath(args), parseNodes(args), parseMaxRate(args), generateKeys, parseTxType(args),
-        parseHybridDsa(args));
+        parseHybridDsa(args), parseEcCurve(args));
   }
 
   // --- Individual flag parsers ------------------------------------------------------------
@@ -233,6 +241,23 @@ public final class CliArgs {
       }
     }
     return HybridDsa.DEFAULT;
+  }
+
+  private static EcCurve parseEcCurve(String[] args) {
+    for (int i = 0; i < args.length; i++) {
+      String lower = args[i].toLowerCase();
+      if (lower.equals("--eccurve")) {
+        if (i + 1 >= args.length) {
+          throw new IllegalArgumentException(
+              "--ecCurve requires a value (one of " + EcCurve.cliNames() + ")");
+        }
+        return EcCurve.fromCliName(args[i + 1]);
+      }
+      if (lower.startsWith("--eccurve=")) {
+        return EcCurve.fromCliName(args[i].substring("--eccurve=".length()));
+      }
+    }
+    return EcCurve.DEFAULT;
   }
 
   // --- Low-level helpers -------------------------------------------------------------------
