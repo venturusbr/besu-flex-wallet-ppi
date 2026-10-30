@@ -22,10 +22,10 @@ Send a single `FlexibleEIP1559` transaction to `http://localhost:8545`:
 mvn exec:java -Dexec.args="--txType FlexibleEIP1559"
 ```
 
-Generate a fresh key pair, then send 100 `FlexibleEIP1559` transactions in parallel across the four default nodes (`localhost:8545`–`8548`):
+Send 100 `FlexibleEIP1559` transactions in parallel across the four default nodes (`localhost:8545`–`8548`), each from its own freshly generated account:
 
 ```sh
-mvn exec:java -Dexec.args="--generateKeys --txAmount 100 --txType FlexibleEIP1559"
+mvn exec:java -Dexec.args="--txAmount 100 --txType FlexibleEIP1559"
 ```
 
 Show all flags and examples:
@@ -38,8 +38,8 @@ mvn exec:java -Dexec.args="--help"
 
 The wallet runs in one of two modes, chosen by the presence of `--txAmount`:
 
-- **Single-tx mode** (default) — signs one transaction with nonce 0 and prints the raw JSON-RPC response to stdout.
-- **Batch mode** (`--txAmount N`) — signs and sends N transactions in parallel using nonces `0..N-1`, distributed round-robin across the configured endpoints. A live progress line is updated every 500 ms while running, and every outcome (success or failure) is written to a CSV at the end together with a summary on stdout.
+- **Single-tx mode** (default) — signs one transaction with nonce 0 using the key pair from the key file and prints the raw JSON-RPC response to stdout.
+- **Batch mode** (`--txAmount N`) — generates N fresh key pairs in memory and sends one transaction from each, in parallel, distributed round-robin across the configured endpoints. Every transaction has its own sender address and nonce 0. The key file is not read or written, and the generated keys are discarded when the run ends. A live progress line is updated every 500 ms while running, and every outcome (success or failure) is written to a CSV at the end together with a summary on stdout.
 
 ## Arguments
 
@@ -47,11 +47,11 @@ All flags are case-insensitive and accept either the `--flag value` or `--flag=v
 
 - **`--help`, `-h`** — Print the full usage block and exit. Works without any other setup, so it's safe to run on a fresh clone before generating keys.
 
-- **`--generateKeys`** — Force regeneration of the key pair file. Without this flag, keys are only created if the file is missing. ⚠️ Using `--generateKeys` overwrites any existing key file.
+- **`--generateKeys`** — Force regeneration of the key pair file. Without this flag, keys are only created if the file is missing. ⚠️ Using `--generateKeys` overwrites any existing key file. Ignored in batch mode, which never uses the key file.
 
-- **`--txAmount N`** — Enable batch mode. Sends `N` transactions in parallel using nonces `0..N-1`. Without this flag the app sends a single transaction with nonce 0.
+- **`--txAmount N`** — Enable batch mode. Sends `N` transactions in parallel, each from a freshly generated account with nonce 0. Without this flag the app sends a single transaction with nonce 0 from the key-file account.
 
-- **`--nodes URL1,URL2,...`** — Comma-separated JSON-RPC endpoints. In batch mode, transactions are distributed across them round-robin by nonce; in single-tx mode only the first URL is used. Defaults: `http://localhost:8545,http://localhost:8546,http://localhost:8547,http://localhost:8548` in batch mode, `http://localhost:8545` in single-tx mode.
+- **`--nodes URL1,URL2,...`** — Comma-separated JSON-RPC endpoints. In batch mode, transactions are distributed across them round-robin by transaction index; in single-tx mode only the first URL is used. Defaults: `http://localhost:8545,http://localhost:8546,http://localhost:8547,http://localhost:8548` in batch mode, `http://localhost:8545` in single-tx mode.
 
 - **`--output PATH`** — CSV output path for batch mode. Defaults to `tx_results_<yyyyMMdd-HHmmss>.csv` in the current working directory. Ignored in single-tx mode.
 
@@ -79,10 +79,10 @@ Single `FlexibleEIP1559` transaction to `localhost:8545`:
 mvn exec:java -Dexec.args="--txType FlexibleEIP1559"
 ```
 
-Generate fresh keys, then send 100 legacy `EIP1559` transactions across the 4 default nodes:
+100 legacy `EIP1559` transactions across the 4 default nodes:
 
 ```sh
-mvn exec:java -Dexec.args="--generateKeys --txAmount 100 --txType EIP1559"
+mvn exec:java -Dexec.args="--txAmount 100 --txType EIP1559"
 ```
 
 1,000 `EIP1559` transactions to a secp256r1 network (besu-qbft `init-qbft.sh --node-dsa=SECP256R1`):
@@ -119,7 +119,7 @@ mvn exec:java -Dexec.args="--txAmount 10000 --maxRate 20 --txType FlexibleEIP155
 
 In batch mode, every transaction outcome is written to a CSV with the following columns:
 
-- `nonce` — Transaction nonce.
+- `nonce` — Despite the name, the 0-based transaction index within the batch (`-1` if the worker task crashed). The on-chain nonce of every batch transaction is 0.
 - `endpoint` — The JSON-RPC URL the transaction was POSTed to.
 - `status` — `success` or `failure`.
 - `txHash` — Transaction hash returned by the node on success; empty on failure.
@@ -131,7 +131,8 @@ The console summary at the end shows totals, total elapsed time, average rate, a
 
 ## Operational notes
 
-- **Nonces always start at 0.** For an account whose on-chain nonce is non-zero, the first transactions of the run will fail with `nonce too low` until the loop catches up. Use `--generateKeys` to start fresh.
-- **Tx-pool sizing on the Besu side.** With the default sequenced pool, the per-sender future-nonce ceiling is `tx-pool-max-size × tx-pool-limit-by-account-percentage` (defaults: `4096 × 0.001 ≈ 4`). For larger batches, raise these on every node, e.g. `tx-pool-max-size=20000` and `tx-pool-limit-by-account-percentage=1.0`.
+- **One fresh account per batch transaction.** Because every sender is new and sends exactly one transaction with nonce 0, batch runs never hit `nonce too low` or nonce gaps, and the per-sender tx-pool limits on the Besu side do not apply. The generated accounts are unfunded, so this relies on the zero gas price the wallet uses (`maxFeePerGas` = 0). Key generation happens up front, so large `--txAmount` values with hybrid schemes take a noticeable time before the first transaction is sent.
+- **Single-tx mode always uses nonce 0.** Sending a second single transaction from the same key-file account fails with `nonce too low`. Pass `--generateKeys` to switch to a new account.
+- **Tx-pool sizing on the Besu side.** For large batches the total pool size, not the per-sender limit, is the constraint. `tx-pool-max-size` only takes effect with the sequenced transaction pool, so set both on every node (e.g. `tx-pool=sequenced` and `tx-pool-max-size=20000`), or cap the submission rate with `--maxRate`.
 - **Throughput tuning.** The worker pool defaults to 16 threads and the HTTP client to 32 connections per endpoint. When pushing high `--maxRate` against a small number of nodes, raise these constants in `BatchRunner.java` (`DEFAULT_CONCURRENCY`) and `EthSendRawTransaction.java` (`MAX_CONNECTIONS_PER_ROUTE` / `MAX_TOTAL_CONNECTIONS`).
 - **Single endpoint, high concurrency.** With only one URL in `--nodes` and `--txAmount` larger than the per-route HTTP pool size, requests serialize on connection acquisition rather than at Besu. Spread the load with more endpoints, or raise the pool size.
