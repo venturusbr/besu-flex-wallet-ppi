@@ -136,3 +136,7 @@ The console summary at the end shows totals, total elapsed time, average rate, a
 - **Tx-pool sizing on the Besu side.** For large batches the total pool size, not the per-sender limit, is the constraint. `tx-pool-max-size` only takes effect with the sequenced transaction pool, so set both on every node (e.g. `tx-pool=sequenced` and `tx-pool-max-size=20000`), or cap the submission rate with `--maxRate`.
 - **Throughput tuning.** The worker pool defaults to 16 threads and the HTTP client to 32 connections per endpoint. When pushing high `--maxRate` against a small number of nodes, raise these constants in `BatchRunner.java` (`DEFAULT_CONCURRENCY`) and `EthSendRawTransaction.java` (`MAX_CONNECTIONS_PER_ROUTE` / `MAX_TOTAL_CONNECTIONS`).
 - **Single endpoint, high concurrency.** With only one URL in `--nodes` and `--txAmount` larger than the per-route HTTP pool size, requests serialize on connection acquisition rather than at Besu. Spread the load with more endpoints, or raise the pool size.
+
+## License
+
+Licensed under the [Apache License 2.0](LICENSE). See [NOTICE](NOTICE).

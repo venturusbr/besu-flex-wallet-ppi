@@ -1,0 +1,8 @@
+besu-flex-wallet-ppi
+Copyright 2026 Venturus
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Its transaction formats and signature conventions follow besu-pqc-ppi
+(https://github.com/venturusbr/besu-pqc-ppi), a fork of Hyperledger Besu licensed under the
+Apache License, Version 2.0.
